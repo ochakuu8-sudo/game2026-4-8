@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stone Drop</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0d0d;
+    color: #eee;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  #header {
+    display: flex;
+    gap: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    background: rgba(255,255,255,0.05);
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+  }
+  .stat { text-align: center; }
+  .stat span { display: block; font-size: 18px; font-weight: bold; color: #fff; }
+  #canvas-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    background: #111;
+  }
+  #controls {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 340px;
+  }
+  .btn {
+    background: #222;
+    border: 2px solid #444;
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 20px;
+    cursor: pointer;
+    flex: 1;
+    min-width: 50px;
+    text-align: center;
+    touch-action: manipulation;
+    transition: background 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active, .btn.pressed { background: #444; }
+  #btn-left  { flex: 1.2; }
+  #btn-right { flex: 1.2; }
+  #btn-drop  { flex: 1.5; background: #1a3a1a; border-color: #2a6a2a; }
+  #btn-rotate { flex: 1.5; background: #1a1a3a; border-color: #2a2a6a; }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.82);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    gap: 18px;
+  }
+  #overlay h1 { font-size: 2.2em; color: #fff; text-shadow: 0 0 20px #aaf; }
+  #overlay p  { font-size: 1.1em; color: #ccc; text-align: center; max-width: 280px; line-height: 1.5; }
+  #overlay button {
+    background: #2255cc;
+    color: #fff;
+    border: none;
+    padding: 14px 36px;
+    border-radius: 12px;
+    font-size: 1.2em;
+    cursor: pointer;
+    margin-top: 6px;
+    touch-action: manipulation;
+  }
+  #overlay button:active { background: #1144aa; }
+  #stage-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    background: rgba(0,0,0,0.85);
+    color: #ffdd55;
+    font-size: 2em;
+    font-weight: bold;
+    padding: 16px 32px;
+    border-radius: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s;
+    white-space: nowrap;
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+<div id="header">
+  <div class="stat">Score<span id="score">0</span></div>
+  <div class="stat">Stage<span id="stage-disp">1</span></div>
+  <div class="stat">Threshold<span id="thresh-disp">80%</span></div>
+</div>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="stage-banner"></div>
+</div>
+<div id="controls">
+  <button class="btn" id="btn-left">◀</button>
+  <button class="btn" id="btn-rotate">↻ Rotate</button>
+  <button class="btn" id="btn-drop">▼ Drop</button>
+  <button class="btn" id="btn-right">▶</button>
+</div>
+
+<div id="overlay">
+  <h1>Stone Drop</h1>
+  <p>Stack stones to fill bands and clear them. Reach the top to advance stages!</p>
+  <button id="start-btn">Start Game</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+// ─── CONFIG ─────────────────────────────────────────────────────────────────
+const WELL_W       = 300;
+const WELL_H       = 500;
+const WALL_T       = 30;
+const BAND_H       = 60;        // height of each clearing band
+const THRESHOLDS   = [0.80, 0.70, 0.60];
+const STAGES       = 3;
+const COLORS = [
+  '#e05252','#e08832','#d4c830','#52c054',
+  '#52b0e0','#7060d8','#d060c0','#40c8a0'
+];
+const SHAPES = [
+  // Irregular convex polygons, coords centered at origin, radius ~40px
+  [{x:-38,y:-18},{x:-10,y:-42},{x:22,y:-36},{x:42,y:8},{x:18,y:38},{x:-20,y:34},{x:-40,y:10}],
+  [{x:-20,y:-40},{x:20,y:-40},{x:44,y:0},{x:24,y:40},{x:-24,y:40},{x:-44,y:0}],
+  [{x:-16,y:-44},{x:18,y:-38},{x:44,y:-4},{x:30,y:38},{x:-14,y:44},{x:-42,y:12}],
+  [{x:-44,y:-8},{x:-10,y:-44},{x:30,y:-30},{x:44,y:10},{x:10,y:44},{x:-30,y:28}],
+  [{x:0,y:-46},{x:40,y:-14},{x:28,y:38},{x:-28,y:38},{x:-40,y:-14}],
+  [{x:-14,y:-42},{x:14,y:-42},{x:42,y:-10},{x:42,y:18},{x:0,y:44},{x:-42,y:18},{x:-42,y:-10}],
+  [{x:-24,y:-40},{x:16,y:-44},{x:44,y:-4},{x:36,y:34},{x:-8,y:44},{x:-40,y:20}],
+  [{x:-10,y:-44},{x:28,y:-28},{x:44,y:14},{x:20,y:44},{x:-20,y:44},{x:-44,y:14},{x:-28,y:-28}],
+];
+
+// ─── CANVAS & SIZING ────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+let W, H, OFFSET_X, OFFSET_Y;
+
+function resize() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight - 80 - 100; // header + controls
+  const scale = Math.min(1, vw / (WELL_W + 2*WALL_T + 20), vh / (WELL_H + WALL_T + 20));
+  W = Math.round((WELL_W + 2*WALL_T) * scale);
+  H = Math.round((WELL_H + WALL_T) * scale);
+  canvas.width  = (WELL_W + 2*WALL_T);
+  canvas.height = (WELL_H + WALL_T);
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── PHYSICS ────────────────────────────────────────────────────────────────
+const { Engine, Render, Runner, Bodies, Body, Composite, Events, Vector } = Matter;
+
+let engine, world, runner;
+let leftWall, rightWall, floor;
+let activeStone = null;
+let stoneColor  = '#fff';
+let stoneQueue  = [];
+
+// Game state
+let gameState    = 'menu';  // menu | playing | clearing | stageclear | gameover | win
+let score        = 0;
+let stage        = 1;
+let rotateHeld   = false;
+let rotateTimer  = null;
+let moveDir      = 0;
+let moveTimer    = null;
+let lastFrameTime = 0;
+let bodies_to_remove = [];
+
+// ─── INIT PHYSICS ────────────────────────────────────────────────────────────
+function initPhysics() {
+  if (engine) {
+    Runner.stop(runner);
+    Engine.clear(engine);
+  }
+  engine = Engine.create({ gravity: { x:0, y:1.4 } });
+  world  = engine.world;
+  runner = Runner.create();
+
+  const cx = WALL_T + WELL_W/2;
+
+  // Walls: left, right, floor
+  leftWall  = Bodies.rectangle(WALL_T/2,           (WELL_H+WALL_T)/2, WALL_T, WELL_H+2*WALL_T, { isStatic:true, friction:0.8, restitution:0.05 });
+  rightWall = Bodies.rectangle(WALL_T+WELL_W+WALL_T/2, (WELL_H+WALL_T)/2, WALL_T, WELL_H+2*WALL_T, { isStatic:true, friction:0.8, restitution:0.05 });
+  floor     = Bodies.rectangle(cx, WELL_H+WALL_T/2, WELL_W+2*WALL_T, WALL_T, { isStatic:true, friction:0.8, restitution:0.05 });
+
+  [leftWall, rightWall, floor].forEach(b => {
+    b.label = 'wall';
+    b.render = { fillStyle: '#333' };
+  });
+
+  Composite.add(world, [leftWall, rightWall, floor]);
+  Runner.run(runner, engine);
+}
+
+// ─── STONE FACTORY ──────────────────────────────────────────────────────────
+let colorIdx = 0;
+function nextColor() {
+  const c = COLORS[colorIdx % COLORS.length];
+  colorIdx++;
+  return c;
+}
+
+function spawnStone() {
+  if (gameState !== 'playing') return;
+
+  const shapeIdx = Math.floor(Math.random() * SHAPES.length);
+  const verts = SHAPES[shapeIdx].map(v => ({x: v.x * 0.85, y: v.y * 0.85}));
+  const cx = WALL_T + WELL_W/2 + (Math.random()-0.5)*60;
+  const cy = -50;
+  const color = nextColor();
+
+  let stone;
+  try {
+    stone = Bodies.fromVertices(cx, cy, verts, {
+      friction: 0.8,
+      restitution: 0.05,
+      frictionAir: 0.01,
+      density: 0.002,
+      label: 'stone'
+    });
+  } catch(e) {
+    // fallback to rectangle if polygon fails
+    stone = Bodies.rectangle(cx, cy, 60, 60, {
+      friction: 0.8, restitution: 0.05, frictionAir: 0.01, density: 0.002, label: 'stone'
+    });
+  }
+  stone._color = color;
+  Composite.add(world, stone);
+  activeStone = stone;
+}
+
+// ─── CLEARING MECHANIC ──────────────────────────────────────────────────────
+// Pixel-based band fill detection
+function getBandFillRatio(bandY1, bandY2) {
+  // Render stones into an offscreen canvas and sample pixels
+  const bw = WELL_W;
+  const bh = bandY2 - bandY1;
+  const oc  = document.createElement('canvas');
+  oc.width  = bw;
+  oc.height = bh;
+  const oc_ctx = oc.getContext('2d');
+  oc_ctx.clearRect(0, 0, bw, bh);
+
+  const stones = Composite.allBodies(world).filter(b => b.label === 'stone');
+  stones.forEach(b => {
+    if (!b.vertices) return;
+    oc_ctx.beginPath();
+    const verts = b.vertices;
+    oc_ctx.moveTo(verts[0].x - WALL_T, verts[0].y - bandY1);
+    for (let i = 1; i < verts.length; i++) {
+      oc_ctx.lineTo(verts[i].x - WALL_T, verts[i].y - bandY1);
+    }
+    oc_ctx.closePath();
+    oc_ctx.fillStyle = '#fff';
+    oc_ctx.fill();
+  });
+
+  const data = oc_ctx.getImageData(0, 0, bw, bh).data;
+  let filled = 0;
+  const total = bw * bh;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 128) filled++;
+  }
+  return filled / total;
+}
+
+function getHighestStoneY() {
+  const stones = Composite.allBodies(world).filter(b => b.label === 'stone');
+  if (!stones.length) return WELL_H;
+  let minY = WELL_H;
+  stones.forEach(b => {
+    b.vertices.forEach(v => { if (v.y < minY) minY = v.y; });
+  });
+  return minY;
+}
+
+function checkClear() {
+  if (gameState !== 'playing') return;
+  const threshold = THRESHOLDS[stage-1];
+  const bands = Math.floor(WELL_H / BAND_H);
+  let cleared = false;
+
+  for (let i = 0; i < bands; i++) {
+    const y1 = i * BAND_H;
+    const y2 = y1 + BAND_H;
+    const ratio = getBandFillRatio(y1, y2);
+    if (ratio >= threshold) {
+      cleared = true;
+      sliceBand(y1, y2);
+      score += Math.round(1000 * (stage));
+      updateHUD();
+    }
+  }
+
+  if (cleared) {
+    gameState = 'clearing';
+    setTimeout(() => {
+      gameState = 'playing';
+      checkTopReached();
+    }, 600);
+  }
+}
+
+function sliceBand(y1, y2) {
+  // Remove stones fully within band and slice partial ones
+  const stones = Composite.allBodies(world).filter(b => b.label === 'stone');
+  const toRemove = [];
+  const toAdd    = [];
+
+  stones.forEach(b => {
+    const verts = b.vertices;
+    const minY  = Math.min(...verts.map(v=>v.y));
+    const maxY  = Math.max(...verts.map(v=>v.y));
+
+    if (minY >= y1 && maxY <= y2) {
+      // fully inside band – remove
+      toRemove.push(b);
+      score += 50;
+    } else if (maxY > y1 && minY < y2) {
+      // partially in band – remove body, keep parts above and below
+      toRemove.push(b);
+      const above = verts.filter(v => v.y <= y1);
+      const below = verts.filter(v => v.y >= y2);
+
+      // Re-add above part if significant
+      if (above.length >= 3) {
+        try {
+          const nb = Bodies.fromVertices(b.position.x, b.position.y - BAND_H/2, above.map(v=>({x:v.x,y:v.y})), {
+            friction: 0.8, restitution: 0.05, frictionAir: 0.01, density: 0.002, label: 'stone'
+          });
+          nb._color = b._color;
+          toAdd.push(nb);
+        } catch(e) {}
+      }
+    }
+  });
+
+  toRemove.forEach(b => Composite.remove(world, b));
+  toAdd.forEach(b    => Composite.add(world, b));
+
+  // Apply upward impulse to stones above the cleared band to help settle
+  Composite.allBodies(world).filter(b => b.label === 'stone').forEach(b => {
+    const maxY = Math.max(...b.vertices.map(v=>v.y));
+    if (maxY <= y1) {
+      Body.applyForce(b, b.position, { x: 0, y: 0.005 * b.mass });
+    }
+  });
+}
+
+function checkTopReached() {
+  if (gameState !== 'playing') return;
+  const highY = getHighestStoneY();
+  if (highY < 40) {
+    // Stage clear
+    if (stage >= STAGES) {
+      gameState = 'win';
+      showOverlay('You Win! 🎉', 'Score: ' + score, 'Play Again');
+    } else {
+      gameState = 'stageclear';
+      stage++;
+      showBanner('Stage ' + stage + '!');
+      setTimeout(() => {
+        clearAllStones();
+        gameState = 'playing';
+        updateHUD();
+        spawnStone();
+      }, 2000);
+    }
+  }
+}
+
+function clearAllStones() {
+  const stones = Composite.allBodies(world).filter(b => b.label === 'stone');
+  stones.forEach(b => Composite.remove(world, b));
+  activeStone = null;
+}
+
+// ─── MOVEMENT & ROTATION ────────────────────────────────────────────────────
+function moveStone(dir) {
+  if (!activeStone || gameState !== 'playing') return;
+  const cx = activeStone.position.x;
+  const newX = cx + dir * 12;
+  const minX = WALL_T + 30;
+  const maxX = WALL_T + WELL_W - 30;
+  if (newX < minX || newX > maxX) return;
+  Body.setPosition(activeStone, { x: newX, y: activeStone.position.y });
+}
+
+function dropStone() {
+  if (!activeStone || gameState !== 'playing') return;
+  Body.setVelocity(activeStone, { x: 0, y: 18 });
+}
+
+function rotateStone() {
+  if (!activeStone || gameState !== 'playing') return;
+  Body.setAngularVelocity(activeStone, 0.12);
+}
+
+// ─── HUD & OVERLAYS ─────────────────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('stage-disp').textContent = stage;
+  document.getElementById('thresh-disp').textContent = Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
+}
+
+function showBanner(msg) {
+  const b = document.getElementById('stage-banner');
+  b.textContent = msg;
+  b.style.opacity = '1';
+  setTimeout(() => { b.style.opacity = '0'; }, 1800);
+}
+
+function showOverlay(title, msg, btnText) {
+  const ov = document.getElementById('overlay');
+  ov.querySelector('h1').textContent = title;
+  ov.querySelector('p').textContent  = msg;
+  ov.querySelector('button').textContent = btnText;
+  ov.style.display = 'flex';
+}
+
+function hideOverlay() {
+  document.getElementById('overlay').style.display = 'none';
+}
+
+// ─── GAME LOOP (RENDER) ──────────────────────────────────────────────────────
+// We use Matter.js for physics but render ourselves for color control
+function drawGame(ts) {
+  requestAnimationFrame(drawGame);
+  if (gameState !== 'playing' && gameState !== 'clearing' && gameState !== 'stageclear') return;
+
+  const cw = canvas.width;
+  const ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Background
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Well area
+  ctx.fillStyle = '#181818';
+  ctx.fillRect(WALL_T, 0, WELL_W, WELL_H);
+
+  // Band guides (faint)
+  const threshold = THRESHOLDS[stage-1];
+  const bands = Math.floor(WELL_H / BAND_H);
+  for (let i = 0; i < bands; i++) {
+    const y1 = i * BAND_H;
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(WALL_T, y1);
+    ctx.lineTo(WALL_T + WELL_W, y1);
+    ctx.stroke();
+
+    // Fill indicator
+    if (gameState === 'playing') {
+      const ratio = getBandFillRatio(y1, y1 + BAND_H);
+      const pct = ratio / threshold;
+      const green = Math.min(1, pct);
+      ctx.fillStyle = `rgba(${Math.round(255*(1-green))},${Math.round(200*green)},50,0.18)`;
+      ctx.fillRect(WALL_T, y1, WELL_W * Math.min(ratio, 1), BAND_H * 0.12);
+    }
+  }
+
+  // Walls
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(0, 0, WALL_T, ch);
+  ctx.fillRect(WALL_T + WELL_W, 0, WALL_T, ch);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(0, WELL_H, cw, WALL_T);
+
+  // Wall decorations
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(WALL_T, 0, WELL_W, WELL_H);
+
+  // Stones
+  const allBodies = Composite.allBodies(world);
+  allBodies.forEach(b => {
+    if (b.label !== 'stone') return;
+    const verts = b.vertices;
+    ctx.beginPath();
+    ctx.moveTo(verts[0].x, verts[0].y);
+    for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+    ctx.closePath();
+    ctx.fillStyle   = b._color || '#888';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // Highlight active stone
+    if (b === activeStone) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth   = 2.5;
+      ctx.stroke();
+    }
+  });
+
+  // Clearing flash
+  if (gameState === 'clearing') {
+    ctx.fillStyle = 'rgba(255,255,100,0.12)';
+    ctx.fillRect(WALL_T, 0, WELL_W, WELL_H);
+  }
+}
+
+// ─── STONE LIFECYCLE ────────────────────────────────────────────────────────
+let stoneSettleTimer = null;
+
+Events.on && (function() {
+  // We'll wire up after engine is created
+})();
+
+function checkStoneSettled() {
+  if (!activeStone) return;
+  const vel = activeStone.speed;
+  const avel = Math.abs(activeStone.angularVelocity);
+  if (vel < 0.5 && avel < 0.02 && activeStone.position.y > 50) {
+    if (!stoneSettleTimer) {
+      stoneSettleTimer = setTimeout(() => {
+        stoneSettleTimer = null;
+        if (activeStone && activeStone.speed < 1.5) {
+          activeStone = null;
+          checkClear();
+          if (gameState === 'playing') {
+            setTimeout(spawnStone, 300);
+          }
+        }
+      }, 800);
+    }
+  } else {
+    if (stoneSettleTimer) {
+      clearTimeout(stoneSettleTimer);
+      stoneSettleTimer = null;
+    }
+  }
+}
+
+// Poll stone settle state
+setInterval(() => {
+  if (gameState === 'playing') checkStoneSettled();
+}, 200);
+
+// ─── CONTROLS ───────────────────────────────────────────────────────────────
+function startMove(dir) {
+  moveDir = dir;
+  moveStone(dir);
+  clearInterval(moveTimer);
+  moveTimer = setInterval(() => moveStone(dir), 80);
+}
+function stopMove() {
+  moveDir = 0;
+  clearInterval(moveTimer);
+}
+
+function startRotate() {
+  rotateHeld = true;
+  rotateStone();
+  clearInterval(rotateTimer);
+  rotateTimer = setInterval(rotateStone, 80);
+}
+function stopRotate() {
+  rotateHeld = false;
+  clearInterval(rotateTimer);
+}
+
+function addBtnListeners(id, down, up) {
+  const el = document.getElementById(id);
+  el.addEventListener('mousedown',  e => { e.preventDefault(); down(); el.classList.add('pressed'); });
+  el.addEventListener('mouseup',    e => { up(); el.classList.remove('pressed'); });
+  el.addEventListener('mouseleave', e => { up(); el.classList.remove('pressed'); });
+  el.addEventListener('touchstart', e => { e.preventDefault(); down(); el.classList.add('pressed'); }, {passive:false});
+  el.addEventListener('touchend',   e => { up(); el.classList.remove('pressed'); });
+  el.addEventListener('touchcancel',e => { up(); el.classList.remove('pressed'); });
+}
+
+addBtnListeners('btn-left',   () => startMove(-1), stopMove);
+addBtnListeners('btn-right',  () => startMove(1),  stopMove);
+addBtnListeners('btn-rotate', startRotate,          stopRotate);
+addBtnListeners('btn-drop',   dropStone,            ()=>{});
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (gameState !== 'playing') return;
+  if (e.key === 'ArrowLeft')  { startMove(-1); }
+  if (e.key === 'ArrowRight') { startMove(1);  }
+  if (e.key === 'ArrowDown' || e.key === ' ') { dropStone(); }
+  if (e.key === 'ArrowUp' || e.key === 'z' || e.key === 'Z') { startRotate(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') stopMove();
+  if (e.key === 'ArrowUp' || e.key === 'z' || e.key === 'Z') stopRotate();
+});
+
+// Touch drag on canvas
+let touchStartX = null;
+canvas.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+}, {passive:true});
+canvas.addEventListener('touchmove', e => {
+  if (touchStartX === null) return;
+  const dx = e.touches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 18) {
+    moveStone(dx > 0 ? 1 : -1);
+    touchStartX = e.touches[0].clientX;
+  }
+}, {passive:true});
+canvas.addEventListener('touchend', () => { touchStartX = null; });
+
+// ─── START / RESTART ────────────────────────────────────────────────────────
+function startGame() {
+  score       = 0;
+  stage       = 1;
+  colorIdx    = 0;
+  gameState   = 'playing';
+  activeStone = null;
+  if (stoneSettleTimer) { clearTimeout(stoneSettleTimer); stoneSettleTimer = null; }
+  hideOverlay();
+  updateHUD();
+  initPhysics();
+  setTimeout(spawnStone, 400);
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+
+// ─── KICK OFF RENDER LOOP ────────────────────────────────────────────────────
+requestAnimationFrame(drawGame);
+
+})();
+</script>
+</body>
+</html>
