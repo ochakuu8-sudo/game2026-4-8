@@ -105,7 +105,6 @@ canvas { display: block; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
 <script>
 (function(){
 'use strict';
@@ -113,7 +112,7 @@ canvas { display: block; }
 var M = Matter;
 var Engine = M.Engine, Runner = M.Runner, Bodies = M.Bodies, Body = M.Body, Composite = M.Composite, Common = M.Common;
 
-if (window.decomp) Common.setDecomp(window.decomp);
+// poly-decomp 不要（全形状を凸多角形に変更）
 
 // CONFIG
 var WELL_W = 280, WELL_H = 480, WALL_T = 26, BAND_H = 60;
@@ -123,74 +122,28 @@ var SPAWN_Y = 50;
 
 var COLORS = ['#e05252','#e08832','#d4c830','#52c054','#52b0e0','#7060d8','#d060c0','#40c8a0','#ff7f50','#9370db'];
 
-// --- SHAPE HELPERS ---
-function star(n, r1, r2) {
-  var v = [];
-  for (var i = 0; i < n*2; i++) {
-    var a = (i * Math.PI / n) - Math.PI/2;
-    var r = (i % 2 === 0) ? r1 : r2;
-    v.push({x: Math.cos(a)*r, y: Math.sin(a)*r});
-  }
-  return v;
-}
-function ngon(n, r) {
-  var v = [];
-  for (var i = 0; i < n; i++) {
-    var a = (i * 2*Math.PI/n) - Math.PI/2;
-    v.push({x: Math.cos(a)*r, y: Math.sin(a)*r});
-  }
-  return v;
-}
-
-// Scale helper: shrink all verts by factor
-function sc(verts, f) { return verts.map(function(v){return {x:v.x*f,y:v.y*f};}); }
-
-// --- SHAPES (all centered at origin, radius ~32px) ---
+// --- SHAPES: 全て凸多角形・非対称 (重心が偏り衝突で自然に回転) ---
 var SHAPES = [
-  // 5-pointed star
-  { label:'★', color:null, verts: star(5, 33, 13) },
-  // 4-pointed star
-  { label:'✦', color:null, verts: star(4, 33, 12) },
-  // 6-pointed star
-  { label:'✶', color:null, verts: star(6, 31, 14) },
-  // Cross / plus
-  { label:'✚', color:null, verts: sc([
-    {x:-10,y:-33},{x:10,y:-33},
-    {x:10,y:-10},{x:33,y:-10},
-    {x:33,y:10},{x:10,y:10},
-    {x:10,y:33},{x:-10,y:33},
-    {x:-10,y:10},{x:-33,y:10},
-    {x:-33,y:-10},{x:-10,y:-10}
-  ], 1) },
-  // Up arrow
-  { label:'▲', color:null, verts: sc([
-    {x:0,y:-35},{x:24,y:-5},{x:11,y:-5},
-    {x:11,y:33},{x:-11,y:33},{x:-11,y:-5},{x:-24,y:-5}
-  ], 1) },
-  // Lightning bolt
-  { label:'⚡', color:null, verts: sc([
-    {x:11,y:-35},{x:-5,y:-1},{x:12,y:-1},
-    {x:-11,y:35},{x:5,y:1},{x:-12,y:1}
-  ], 1) },
-  // L-shape
-  { label:'L', color:null, verts: sc([
-    {x:-10,y:-33},{x:10,y:-33},{x:10,y:17},
-    {x:33,y:17},{x:33,y:33},{x:-10,y:33}
-  ], 1) },
-  // T-shape
-  { label:'T', color:null, verts: sc([
-    {x:-33,y:-33},{x:33,y:-33},{x:33,y:-12},
-    {x:10,y:-12},{x:10,y:33},{x:-10,y:33},
-    {x:-10,y:-12},{x:-33,y:-12}
-  ], 1) },
-  // Z-shape
-  { label:'Z', color:null, verts: sc([
-    {x:-33,y:-33},{x:18,y:-33},{x:18,y:-12},
-    {x:33,y:-12},{x:33,y:33},{x:-18,y:33},
-    {x:-18,y:12},{x:-33,y:12}
-  ], 1) },
-  // Hexagon
-  { label:'⬡', color:null, verts: ngon(6, 32) }
+  // 直角三角形 (重心が左寄り)
+  { label:'◁', verts:[{x:-32,y:28},{x:32,y:28},{x:-32,y:-28}] },
+  // 斜め三角形 (頂点が右にずれた)
+  { label:'△', verts:[{x:20,y:-32},{x:35,y:28},{x:-30,y:22}] },
+  // 広い台形 (下底が左にずれた)
+  { label:'⏢', verts:[{x:-35,y:24},{x:30,y:24},{x:16,y:-24},{x:-20,y:-24}] },
+  // 平行四辺形
+  { label:'▱', verts:[{x:-32,y:22},{x:12,y:22},{x:32,y:-22},{x:-12,y:-22}] },
+  // くさび型 (頂点が右にずれた三角)
+  { label:'▶', verts:[{x:-30,y:28},{x:35,y:28},{x:8,y:-30}] },
+  // 非対称五角形
+  { label:'⬠', verts:[{x:8,y:-33},{x:35,y:-5},{x:28,y:33},{x:-22,y:33},{x:-35,y:0}] },
+  // 斜めの四角形 (ひし形崩れ)
+  { label:'◆', verts:[{x:-12,y:-32},{x:28,y:-18},{x:22,y:32},{x:-32,y:18}] },
+  // 矢じり型 (凸・非対称)
+  { label:'▷', verts:[{x:-28,y:-28},{x:35,y:0},{x:18,y:32},{x:-15,y:32},{x:-35,y:8}] },
+  // 細長い斜め台形
+  { label:'▬', verts:[{x:-35,y:14},{x:25,y:22},{x:35,y:-14},{x:-25,y:-22}] },
+  // 非対称六角形 (各頂点の距離がバラバラ)
+  { label:'⬡', verts:[{x:12,y:-33},{x:35,y:-8},{x:30,y:25},{x:-5,y:33},{x:-35,y:10},{x:-28,y:-25}] }
 ];
 
 // CANVAS
@@ -235,12 +188,13 @@ function initPhysics() {
 
 function createStone(idx, cx, cy) {
   var def = SHAPES[idx % SHAPES.length];
-  var opts = {friction:0.4, restitution:0.15, frictionAir:0.001, density:0.003, isStatic:true, label:'stone'};
+  var opts = {friction:0.45, restitution:0.12, frictionAir:0.001, density:0.003, isStatic:true, label:'stone'};
   var body;
   try {
-    body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts, true);
+    // 全形状が凸多角形なので flagInternal 不要・分解不要
+    body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts);
   } catch(e) {
-    body = Bodies.rectangle(cx, cy, 70, 70, opts);
+    body = Bodies.rectangle(cx, cy, 60, 40, opts);
   }
   Body.setPosition(body, {x:cx, y:cy});
   body._color  = COLORS[(colorIdx++)%COLORS.length];
