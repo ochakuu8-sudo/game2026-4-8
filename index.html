@@ -29,12 +29,7 @@ body {
 }
 .stat { text-align: center; }
 .stat span { display: block; font-size: 18px; font-weight: bold; color: #fff; }
-#canvas-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+#canvas-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
 canvas { display: block; }
 #controls {
   display: flex;
@@ -62,44 +57,28 @@ canvas { display: block; }
 #btn-drop   { background: #1a3a1a; border-color: #2a6a2a; }
 #btn-rotate { background: #1a1a3a; border-color: #2a2a6a; }
 #overlay {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   background: rgba(0,0,0,0.85);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  gap: 18px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 100; gap: 18px;
 }
 #overlay h1 { font-size: 2em; color: #fff; }
 #overlay p  { font-size: 1em; color: #ccc; text-align: center; max-width: 280px; line-height: 1.6; }
 #overlay button {
-  background: #2255cc;
-  color: #fff;
-  border: none;
-  padding: 14px 36px;
-  border-radius: 12px;
-  font-size: 1.1em;
-  cursor: pointer;
-  touch-action: manipulation;
+  background: #2255cc; color: #fff; border: none;
+  padding: 14px 36px; border-radius: 12px;
+  font-size: 1.1em; cursor: pointer; touch-action: manipulation;
 }
 #overlay button:active { background: #1144aa; }
 #banner {
-  position: absolute;
-  top: 50%; left: 50%;
+  position: absolute; top: 50%; left: 50%;
   transform: translate(-50%,-50%);
-  background: rgba(0,0,0,0.88);
-  color: #ffdd55;
-  font-size: 1.8em;
-  font-weight: bold;
-  padding: 14px 28px;
-  border-radius: 12px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s;
-  white-space: nowrap;
-  z-index: 50;
+  background: rgba(0,0,0,0.88); color: #ffdd55;
+  font-size: 1.8em; font-weight: bold;
+  padding: 14px 28px; border-radius: 12px;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.4s; white-space: nowrap; z-index: 50;
 }
 </style>
 </head>
@@ -107,7 +86,7 @@ canvas { display: block; }
 <div id="header">
   <div class="stat">Score<span id="score">0</span></div>
   <div class="stat">Stage<span id="stage-disp">1</span></div>
-  <div class="stat">Clear at<span id="thresh-disp">80%</span></div>
+  <div class="stat">Clear<span id="thresh-disp">80%</span></div>
 </div>
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
@@ -115,164 +94,171 @@ canvas { display: block; }
 </div>
 <div id="controls">
   <button class="btn" id="btn-left">&#9664;</button>
-  <button class="btn" id="btn-rotate">&#8635; Rotate</button>
+  <button class="btn" id="btn-rotate">&#8635;</button>
   <button class="btn" id="btn-drop">&#9660; Drop</button>
   <button class="btn" id="btn-right">&#9654;</button>
 </div>
-
 <div id="overlay">
   <h1>Stone Drop</h1>
-  <p>&#9664; &#9654; to slide, hold Rotate to spin.<br>&#9660; Drop to release the stone.<br>Fill bands to clear them!</p>
+  <p>&#9664;&#9654; slide &nbsp; &#8635; rotate &nbsp; &#9660; drop<br>Fill bands to clear them!</p>
   <button id="start-btn">Start</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
 <script>
 (function(){
 'use strict';
 
-const { Engine, Runner, Bodies, Body, Composite } = Matter;
+var M = Matter;
+var Engine = M.Engine, Runner = M.Runner, Bodies = M.Bodies, Body = M.Body, Composite = M.Composite, Common = M.Common;
 
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-const WELL_W     = 280;
-const WELL_H     = 480;
-const WALL_T     = 26;
-const BAND_H     = 60;
-const NUM_BANDS  = Math.floor(WELL_H / BAND_H); // 8
-const THRESHOLDS = [0.80, 0.70, 0.60];
-const SPAWN_Y    = 48;
+if (window.decomp) Common.setDecomp(window.decomp);
 
-const COLORS = [
-  '#e05252','#e08832','#d4c830','#52c054',
-  '#52b0e0','#7060d8','#d060c0','#40c8a0',
-  '#ff7f50','#9370db'
-];
+// CONFIG
+var WELL_W = 280, WELL_H = 480, WALL_T = 26, BAND_H = 60;
+var NUM_BANDS = Math.floor(WELL_H / BAND_H);
+var THRESHOLDS = [0.80, 0.70, 0.60];
+var SPAWN_Y = 50;
 
-// ── SHAPE DEFS ────────────────────────────────────────────────────────────────
-// type 'poly'     : convex polygon vertices, centered at origin
-// type 'compound' : array of {x,y,w,h} rectangles, centered at origin
-const SHAPES = [
-  // irregular convex blobs
-  { type:'poly', v:[{x:-10,y:-55},{x:30,y:-45},{x:55,y:-5},{x:50,y:40},{x:15,y:58},{x:-30,y:52},{x:-55,y:18},{x:-48,y:-28}] },
-  { type:'poly', v:[{x:0,y:-58},{x:45,y:-20},{x:55,y:25},{x:20,y:58},{x:-25,y:55},{x:-55,y:15},{x:-48,y:-32}] },
-  { type:'poly', v:[{x:-35,y:-52},{x:20,y:-55},{x:58,y:-10},{x:52,y:38},{x:5,y:58},{x:-42,y:42},{x:-58,y:0}] },
-  { type:'poly', v:[{x:-8,y:-58},{x:35,y:-35},{x:58,y:8},{x:40,y:48},{x:-5,y:58},{x:-45,y:38},{x:-58,y:-12},{x:-32,y:-48}] },
-  // L-shape
-  { type:'compound', parts:[
-    {x:-5, y:-10, w:22, h:90},
-    {x:28, y:35,  w:52, h:22}
+var COLORS = ['#e05252','#e08832','#d4c830','#52c054','#52b0e0','#7060d8','#d060c0','#40c8a0','#ff7f50','#9370db'];
+
+// --- SHAPE HELPERS ---
+function star(n, r1, r2) {
+  var v = [];
+  for (var i = 0; i < n*2; i++) {
+    var a = (i * Math.PI / n) - Math.PI/2;
+    var r = (i % 2 === 0) ? r1 : r2;
+    v.push({x: Math.cos(a)*r, y: Math.sin(a)*r});
+  }
+  return v;
+}
+function ngon(n, r) {
+  var v = [];
+  for (var i = 0; i < n; i++) {
+    var a = (i * 2*Math.PI/n) - Math.PI/2;
+    v.push({x: Math.cos(a)*r, y: Math.sin(a)*r});
+  }
+  return v;
+}
+
+// --- SHAPES (all centered at origin) ---
+var SHAPES = [
+  // 5-pointed star
+  { label:'★', color:null, verts: star(5, 55, 22) },
+  // 4-pointed star
+  { label:'✦', color:null, verts: star(4, 55, 20) },
+  // 6-pointed star
+  { label:'✶', color:null, verts: star(6, 52, 24) },
+  // Cross / plus
+  { label:'✚', color:null, verts: [
+    {x:-16,y:-55},{x:16,y:-55},
+    {x:16,y:-16},{x:55,y:-16},
+    {x:55,y:16},{x:16,y:16},
+    {x:16,y:55},{x:-16,y:55},
+    {x:-16,y:16},{x:-55,y:16},
+    {x:-55,y:-16},{x:-16,y:-16}
   ]},
-  // J-shape
-  { type:'compound', parts:[
-    {x:5,  y:-10, w:22, h:90},
-    {x:-28,y:35,  w:52, h:22}
+  // Up arrow
+  { label:'▲▲', color:null, verts: [
+    {x:0,y:-58},{x:40,y:-8},{x:18,y:-8},
+    {x:18,y:55},{x:-18,y:55},{x:-18,y:-8},{x:-40,y:-8}
+  ]},
+  // Lightning bolt
+  { label:'⚡', color:null, verts: [
+    {x:18,y:-58},{x:-8,y:-2},{x:20,y:-2},
+    {x:-18,y:58},{x:8,y:2},{x:-20,y:2}
+  ]},
+  // L-shape
+  { label:'L', color:null, verts: [
+    {x:-16,y:-55},{x:16,y:-55},{x:16,y:28},
+    {x:55,y:28},{x:55,y:55},{x:-16,y:55}
   ]},
   // T-shape
-  { type:'compound', parts:[
-    {x:0,  y:-32, w:100,h:22},
-    {x:0,  y:16,  w:22, h:74}
+  { label:'T', color:null, verts: [
+    {x:-55,y:-55},{x:55,y:-55},{x:55,y:-20},
+    {x:16,y:-20},{x:16,y:55},{x:-16,y:55},
+    {x:-16,y:-20},{x:-55,y:-20}
   ]},
-  // Plus / Cross
-  { type:'compound', parts:[
-    {x:0, y:0, w:90, h:22},
-    {x:0, y:0, w:22, h:90}
+  // Z-shape
+  { label:'Z', color:null, verts: [
+    {x:-55,y:-55},{x:30,y:-55},{x:30,y:-20},
+    {x:55,y:-20},{x:55,y:55},{x:-30,y:55},
+    {x:-30,y:20},{x:-55,y:20}
   ]},
-  // S-step
-  { type:'compound', parts:[
-    {x:-22,y:-16, w:56,h:22},
-    {x: 22,y: 16, w:56,h:22},
-    {x:  0,y:  0, w:22,h:54}
-  ]},
-  // Wide + narrow stack
-  { type:'compound', parts:[
-    {x:0, y:-18, w:80, h:26},
-    {x:0, y: 18, w:44, h:26}
-  ]}
+  // Hexagon
+  { label:'⬡', color:null, verts: ngon(6, 52) }
 ];
 
-// ── CANVAS ────────────────────────────────────────────────────────────────────
-const canvas = document.getElementById('c');
-const ctx    = canvas.getContext('2d');
+// CANVAS
+var canvas = document.getElementById('c');
+var ctx = canvas.getContext('2d');
 
 function resize() {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight - 60 - 80;
-  const s  = Math.min(1, vw / (WELL_W + 2*WALL_T + 16), vh / (WELL_H + WALL_T + 16));
+  var vw = window.innerWidth;
+  var vh = window.innerHeight - 60 - 80;
+  var s = Math.min(1, vw/(WELL_W+2*WALL_T+16), vh/(WELL_H+WALL_T+16));
   canvas.width  = WELL_W + 2*WALL_T;
   canvas.height = WELL_H + WALL_T;
-  canvas.style.width  = Math.round((WELL_W + 2*WALL_T) * s) + 'px';
-  canvas.style.height = Math.round((WELL_H + WALL_T)   * s) + 'px';
+  canvas.style.width  = Math.round((WELL_W+2*WALL_T)*s)+'px';
+  canvas.style.height = Math.round((WELL_H+WALL_T)*s)+'px';
 }
 resize();
 window.addEventListener('resize', resize);
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
-let engine, world, runner;
-let activeStone  = null;
-let state        = 'menu';
-let score        = 0;
-let stage        = 1;
-let colorIdx     = 0;
-let bandRatios   = new Array(NUM_BANDS).fill(0);
-let moveTimer    = null;
-let rotTimer     = null;
-let settleTimer  = null;
+// STATE
+var engine, world, runner;
+var activeStone = null;
+var state = 'menu';
+var score = 0, stage = 1, colorIdx = 0;
+var bandRatios = new Array(NUM_BANDS).fill(0);
+var moveTimer = null, rotTimer = null, settleTimer = null;
 
-// ── PHYSICS ───────────────────────────────────────────────────────────────────
 function initPhysics() {
   if (runner) Runner.stop(runner);
   if (engine) Engine.clear(engine);
-  engine = Engine.create({ gravity: { x:0, y:1.5 } });
-  world  = engine.world;
+  engine = Engine.create({ gravity:{x:0,y:1.5} });
+  world = engine.world;
   runner = Runner.create();
-  const wo = { isStatic:true, friction:0.9, restitution:0.02, label:'wall' };
-  const cx = WALL_T + WELL_W/2;
+  var wo = {isStatic:true, friction:0.9, restitution:0.02, label:'wall'};
+  var cx = WALL_T + WELL_W/2;
   Composite.add(world, [
-    Bodies.rectangle(WALL_T/2,                     WELL_H/2,           WALL_T,            WELL_H + 2*WALL_T, wo),
-    Bodies.rectangle(WALL_T + WELL_W + WALL_T/2,   WELL_H/2,           WALL_T,            WELL_H + 2*WALL_T, wo),
-    Bodies.rectangle(cx,                            WELL_H + WALL_T/2,  WELL_W + 2*WALL_T, WALL_T,            wo),
+    Bodies.rectangle(WALL_T/2,                   WELL_H/2,          WALL_T,            WELL_H+2*WALL_T, wo),
+    Bodies.rectangle(WALL_T+WELL_W+WALL_T/2,     WELL_H/2,          WALL_T,            WELL_H+2*WALL_T, wo),
+    Bodies.rectangle(cx,                          WELL_H+WALL_T/2,   WELL_W+2*WALL_T,   WALL_T,          wo)
   ]);
   Runner.run(runner, engine);
 }
 
-// ── BODY FACTORY ──────────────────────────────────────────────────────────────
 function createStone(idx, cx, cy) {
-  const def  = SHAPES[idx % SHAPES.length];
-  const opts = { friction:0.85, restitution:0.03, frictionAir:0.02, density:0.003, isStatic:true, label:'stone' };
-  let body;
-
-  if (def.type === 'poly') {
-    try {
-      body = Bodies.fromVertices(cx, cy, def.v.map(v => ({x:v.x, y:v.y})), opts, true);
-    } catch(e) {
-      body = Bodies.rectangle(cx, cy, 70, 70, opts);
-    }
-    // fromVertices may shift the center; re-center
-    Body.setPosition(body, { x: cx, y: cy });
-  } else {
-    const parts = def.parts.map(p => Bodies.rectangle(p.x, p.y, p.w, p.h, {}));
-    body = Body.create(Object.assign({}, opts, { parts }));
-    Body.setPosition(body, { x: cx, y: cy });
+  var def = SHAPES[idx % SHAPES.length];
+  var opts = {friction:0.85, restitution:0.03, frictionAir:0.02, density:0.003, isStatic:true, label:'stone'};
+  var body;
+  try {
+    body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts, true);
+  } catch(e) {
+    body = Bodies.rectangle(cx, cy, 70, 70, opts);
   }
-
-  body._color = COLORS[(colorIdx++) % COLORS.length];
+  Body.setPosition(body, {x:cx, y:cy});
+  body._color  = COLORS[(colorIdx++)%COLORS.length];
+  body._label  = def.label;
+  body._idx    = idx;
   return body;
 }
 
 function spawnStone() {
   if (state !== 'playing') return;
-  const idx = Math.floor(Math.random() * SHAPES.length);
-  const s   = createStone(idx, WALL_T + WELL_W/2, SPAWN_Y);
+  var idx = Math.floor(Math.random() * SHAPES.length);
+  var s = createStone(idx, WALL_T + WELL_W/2, SPAWN_Y);
   Composite.add(world, s);
   activeStone = s;
 }
 
-// ── CONTROLS (while held static) ──────────────────────────────────────────────
 function moveStone(dir) {
   if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
-  const nx = activeStone.position.x + dir * 14;
-  if (nx < WALL_T + 40 || nx > WALL_T + WELL_W - 40) return;
-  Body.setPosition(activeStone, { x: nx, y: activeStone.position.y });
+  var nx = activeStone.position.x + dir*14;
+  if (nx < WALL_T+42 || nx > WALL_T+WELL_W-42) return;
+  Body.setPosition(activeStone, {x:nx, y:activeStone.position.y});
 }
 
 function rotateStone() {
@@ -283,15 +269,15 @@ function rotateStone() {
 function dropStone() {
   if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
   Body.setStatic(activeStone, false);
-  Body.setVelocity(activeStone, { x:0, y:0 });
+  Body.setVelocity(activeStone, {x:0, y:0});
   Body.setAngularVelocity(activeStone, 0);
 }
 
-// ── SETTLE DETECTION ──────────────────────────────────────────────────────────
+// Settle detection
 setInterval(function() {
   if (state !== 'playing' || !activeStone || activeStone.isStatic) return;
-  const moving = activeStone.speed > 0.5 || Math.abs(activeStone.angularVelocity) > 0.02;
-  if (!moving && activeStone.position.y > SPAWN_Y + 30) {
+  var moving = activeStone.speed > 0.5 || Math.abs(activeStone.angularVelocity) > 0.02;
+  if (!moving && activeStone.position.y > SPAWN_Y+30) {
     if (!settleTimer) {
       settleTimer = setTimeout(function() {
         settleTimer = null;
@@ -307,100 +293,86 @@ setInterval(function() {
   }
 }, 150);
 
-// ── BAND FILL RATIO ───────────────────────────────────────────────────────────
+// Band fill ratio
 function computeRatio(y1, y2) {
-  const bh = y2 - y1;
-  const oc = document.createElement('canvas');
+  var bh = y2-y1;
+  var oc = document.createElement('canvas');
   oc.width = WELL_W; oc.height = bh;
-  const octx = oc.getContext('2d');
-  Composite.allBodies(world)
-    .filter(function(b) { return b.label === 'stone' && !b.isStatic; })
-    .forEach(function(b) {
-      const pp = (b.parts && b.parts.length > 1) ? b.parts.slice(1) : [b];
-      pp.forEach(function(p) {
-        const v = p.vertices;
-        if (!v || v.length < 3) return;
-        octx.beginPath();
-        octx.moveTo(v[0].x - WALL_T, v[0].y - y1);
-        for (var i = 1; i < v.length; i++) octx.lineTo(v[i].x - WALL_T, v[i].y - y1);
-        octx.closePath();
-        octx.fillStyle = '#fff';
-        octx.fill();
-      });
+  var octx = oc.getContext('2d');
+  Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;}).forEach(function(b) {
+    var pp = (b.parts && b.parts.length>1) ? b.parts.slice(1) : [b];
+    pp.forEach(function(p) {
+      var v = p.vertices; if (!v||v.length<3) return;
+      octx.beginPath();
+      octx.moveTo(v[0].x-WALL_T, v[0].y-y1);
+      for (var i=1;i<v.length;i++) octx.lineTo(v[i].x-WALL_T, v[i].y-y1);
+      octx.closePath(); octx.fillStyle='#fff'; octx.fill();
     });
-  const px = octx.getImageData(0, 0, WELL_W, bh).data;
+  });
+  var px = octx.getImageData(0,0,WELL_W,bh).data;
   var n = 0;
-  for (var i = 3; i < px.length; i += 4) if (px[i] > 128) n++;
-  return n / (WELL_W * bh);
+  for (var i=3;i<px.length;i+=4) if (px[i]>128) n++;
+  return n/(WELL_W*bh);
 }
 
 function refreshRatios() {
   if (!engine) return;
-  for (var i = 0; i < NUM_BANDS; i++)
-    bandRatios[i] = computeRatio(i * BAND_H, (i+1) * BAND_H);
+  for (var i=0;i<NUM_BANDS;i++) bandRatios[i] = computeRatio(i*BAND_H,(i+1)*BAND_H);
 }
 setInterval(refreshRatios, 280);
 
-// ── POLYGON CLIP (keep above y1) ──────────────────────────────────────────────
+// Polygon clip (keep above y1)
 function clipAbove(verts, y1) {
-  var res = [], n = verts.length;
-  for (var i = 0; i < n; i++) {
-    var a = verts[i], b = verts[(i+1)%n];
-    var aIn = a.y < y1, bIn = b.y < y1;
-    if (aIn && bIn)  { res.push({x:b.x, y:b.y}); }
-    else if (aIn)    { var t=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t*(b.x-a.x),y:y1}); }
-    else if (bIn)    { var t2=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t2*(b.x-a.x),y:y1}); res.push({x:b.x,y:b.y}); }
+  var res=[], n=verts.length;
+  for (var i=0;i<n;i++) {
+    var a=verts[i], b=verts[(i+1)%n];
+    var aIn=a.y<y1, bIn=b.y<y1, t;
+    if (aIn&&bIn) res.push({x:b.x,y:b.y});
+    else if (aIn) { t=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t*(b.x-a.x),y:y1}); }
+    else if (bIn) { t=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t*(b.x-a.x),y:y1}); res.push({x:b.x,y:b.y}); }
   }
   return res;
 }
 
-// ── CLEAR MECHANIC ────────────────────────────────────────────────────────────
 function checkClear() {
   if (state !== 'playing') return;
   refreshRatios();
-  var thresh  = THRESHOLDS[stage - 1];
+  var thresh = THRESHOLDS[stage-1];
   var cleared = false;
-  for (var i = 0; i < NUM_BANDS; i++) {
+  for (var i=0;i<NUM_BANDS;i++) {
     if (bandRatios[i] >= thresh) {
       cleared = true;
-      sliceBand(i * BAND_H, (i+1) * BAND_H);
-      score += 1000 * stage;
+      sliceBand(i*BAND_H,(i+1)*BAND_H);
+      score += 1000*stage;
       updateHUD();
     }
   }
   if (cleared) {
     state = 'clearing';
-    setTimeout(function() {
-      refreshRatios();
-      state = 'playing';
-      checkTopReached();
-    }, 500);
+    setTimeout(function() { refreshRatios(); state='playing'; checkTopReached(); }, 500);
   }
 }
 
 function sliceBand(y1, y2) {
-  var stones = Composite.allBodies(world).filter(function(b) { return b.label==='stone' && !b.isStatic; });
+  var stones = Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;});
   stones.forEach(function(b) {
-    var isCompound = b.parts && b.parts.length > 1;
-    var pp    = isCompound ? b.parts.slice(1) : [b];
-    var allV  = [].concat.apply([], pp.map(function(p){ return p.vertices||[]; }));
-    var minY  = Math.min.apply(null, allV.map(function(v){return v.y;}));
-    var maxY  = Math.max.apply(null, allV.map(function(v){return v.y;}));
-
-    if (minY >= y1 && maxY <= y2) {
-      // fully inside – remove
+    var isComp = b.parts && b.parts.length>1;
+    var pp = isComp ? b.parts.slice(1) : [b];
+    var allV = [].concat.apply([], pp.map(function(p){return p.vertices||[];}));
+    var minY = Math.min.apply(null, allV.map(function(v){return v.y;}));
+    var maxY = Math.max.apply(null, allV.map(function(v){return v.y;}));
+    if (minY>=y1 && maxY<=y2) {
       Composite.remove(world, b);
-    } else if (maxY > y1 && minY < y2) {
-      // overlaps – remove and maybe keep above portion
+    } else if (maxY>y1 && minY<y2) {
       Composite.remove(world, b);
-      if (!isCompound) {
+      if (!isComp) {
         var above = clipAbove(b.vertices, y1);
-        if (above.length >= 3) {
+        if (above.length>=3) {
           try {
-            var nb = Bodies.fromVertices(b.position.x, y1 - 25, above, {
-              friction:0.85, restitution:0.03, frictionAir:0.02, density:0.003, label:'stone'
+            var nb = Bodies.fromVertices(b.position.x, y1-25, above, {
+              friction:0.85,restitution:0.03,frictionAir:0.02,density:0.003,label:'stone'
             }, true);
-            nb._color = b._color;
+            nb._color = b._color; nb._label = b._label;
             Composite.add(world, nb);
           } catch(e) {}
         }
@@ -411,165 +383,158 @@ function sliceBand(y1, y2) {
 
 function checkTopReached() {
   if (state !== 'playing') return;
-  var stones = Composite.allBodies(world).filter(function(b){ return b.label==='stone' && !b.isStatic; });
+  var stones = Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;});
   if (!stones.length) return;
   var allY = [].concat.apply([], stones.map(function(b){
-    var pp = (b.parts && b.parts.length>1) ? b.parts.slice(1) : [b];
-    return [].concat.apply([], pp.map(function(p){ return (p.vertices||[]).map(function(v){return v.y;}); }));
+    var pp = (b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
+    return [].concat.apply([], pp.map(function(p){return (p.vertices||[]).map(function(v){return v.y;});}));
   }));
-  if (Math.min.apply(null, allY) < 55) {
-    if (stage >= 3) {
-      state = 'win';
-      showOverlay('You Win!', 'Score: ' + score, 'Play Again');
-    } else {
-      state = 'stageclear';
-      stage++;
-      showBanner('Stage ' + stage + '!');
-      setTimeout(function() {
-        Composite.allBodies(world).filter(function(b){return b.label==='stone';}).forEach(function(b){ Composite.remove(world,b); });
-        activeStone = null;
-        state = 'playing';
-        updateHUD();
-        spawnStone();
+  if (Math.min.apply(null,allY) < 55) {
+    if (stage>=3) { state='win'; showOverlay('You Win!','Score: '+score,'Play Again'); }
+    else {
+      state='stageclear'; stage++;
+      showBanner('Stage '+stage+'!');
+      setTimeout(function(){
+        Composite.allBodies(world).filter(function(b){return b.label==='stone';}).forEach(function(b){Composite.remove(world,b);});
+        activeStone=null; state='playing'; updateHUD(); spawnStone();
       }, 2000);
     }
   }
 }
 
-// ── RENDER ────────────────────────────────────────────────────────────────────
+// RENDER
 function draw() {
   requestAnimationFrame(draw);
-  if (state !== 'playing' && state !== 'clearing' && state !== 'stageclear') return;
+  if (state!=='playing'&&state!=='clearing'&&state!=='stageclear') return;
+  var cw=canvas.width, ch=canvas.height;
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#111'; ctx.fillRect(0,0,cw,ch);
+  ctx.fillStyle='#171717'; ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
 
-  var cw = canvas.width, ch = canvas.height;
-  ctx.clearRect(0, 0, cw, ch);
-  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, cw, ch);
-  ctx.fillStyle = '#171717'; ctx.fillRect(WALL_T, 0, WELL_W, WELL_H);
-
-  // Band indicators
-  var thresh = THRESHOLDS[stage - 1];
-  for (var i = 0; i < NUM_BANDS; i++) {
-    var y1 = i * BAND_H;
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(WALL_T, y1); ctx.lineTo(WALL_T + WELL_W, y1); ctx.stroke();
-    var r   = bandRatios[i];
-    var pct = Math.min(r / thresh, 1);
-    var red = Math.round(255*(1-pct)), grn = Math.round(200*pct);
-    ctx.fillStyle = 'rgba('+red+','+grn+',50,0.22)';
-    ctx.fillRect(WALL_T, y1, WELL_W * r, 5);
+  var thresh = THRESHOLDS[stage-1];
+  for (var i=0;i<NUM_BANDS;i++) {
+    var y1=i*BAND_H;
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(WALL_T,y1); ctx.lineTo(WALL_T+WELL_W,y1); ctx.stroke();
+    var r=bandRatios[i], pct=Math.min(r/thresh,1);
+    ctx.fillStyle='rgba('+Math.round(255*(1-pct))+','+Math.round(200*pct)+',50,0.22)';
+    ctx.fillRect(WALL_T,y1,WELL_W*r,5);
   }
 
-  // Walls
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(0, 0, WALL_T, ch);
-  ctx.fillRect(WALL_T + WELL_W, 0, WALL_T, ch);
-  ctx.fillRect(0, WELL_H, cw, WALL_T);
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
-  ctx.strokeRect(WALL_T, 0, WELL_W, WELL_H);
+  ctx.fillStyle='#2a2a2a';
+  ctx.fillRect(0,0,WALL_T,ch);
+  ctx.fillRect(WALL_T+WELL_W,0,WALL_T,ch);
+  ctx.fillRect(0,WELL_H,cw,WALL_T);
+  ctx.strokeStyle='#555'; ctx.lineWidth=2;
+  ctx.strokeRect(WALL_T,0,WELL_W,WELL_H);
 
-  // Stones
+  // Draw stones
   Composite.allBodies(world).forEach(function(b) {
-    if (b.label !== 'stone') return;
-    var isActive = (b === activeStone);
-    var pp = (b.parts && b.parts.length > 1) ? b.parts.slice(1) : [b];
+    if (b.label!=='stone') return;
+    var isActive = b===activeStone;
+    var pp = (b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
+
+    // Fill polygon
     pp.forEach(function(p) {
-      var v = p.vertices; if (!v || v.length < 3) return;
+      var v=p.vertices; if (!v||v.length<3) return;
       ctx.beginPath();
-      ctx.moveTo(v[0].x, v[0].y);
-      for (var i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+      ctx.moveTo(v[0].x,v[0].y);
+      for (var i=1;i<v.length;i++) ctx.lineTo(v[i].x,v[i].y);
       ctx.closePath();
-      ctx.fillStyle   = b._color || '#888';
+      ctx.fillStyle = b._color||'#888';
       ctx.fill();
-      ctx.strokeStyle = isActive ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)';
-      ctx.lineWidth   = isActive ? 3 : 1.5;
+      ctx.strokeStyle = isActive?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.25)';
+      ctx.lineWidth = isActive?3:1.5;
       ctx.stroke();
     });
+
+    // Draw symbol label on top
+    if (b._label) {
+      ctx.save();
+      ctx.translate(b.position.x, b.position.y);
+      ctx.rotate(b.angle);
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(b._label, 0, 0);
+      ctx.restore();
+    }
   });
 
-  if (state === 'clearing') {
-    ctx.fillStyle = 'rgba(255,255,80,0.1)';
-    ctx.fillRect(WALL_T, 0, WELL_W, WELL_H);
+  if (state==='clearing') {
+    ctx.fillStyle='rgba(255,255,80,0.1)';
+    ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
   }
 }
 
-// ── HUD / OVERLAYS ────────────────────────────────────────────────────────────
 function updateHUD() {
-  document.getElementById('score').textContent     = score;
+  document.getElementById('score').textContent = score;
   document.getElementById('stage-disp').textContent = stage;
-  document.getElementById('thresh-disp').textContent = Math.round(THRESHOLDS[Math.min(stage-1,2)]*100) + '%';
+  document.getElementById('thresh-disp').textContent = Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
 }
-
 function showBanner(msg) {
-  var el = document.getElementById('banner');
-  el.textContent = msg; el.style.opacity = '1';
-  setTimeout(function(){ el.style.opacity = '0'; }, 1800);
+  var el=document.getElementById('banner');
+  el.textContent=msg; el.style.opacity='1';
+  setTimeout(function(){el.style.opacity='0';},1800);
+}
+function showOverlay(title,body,btn) {
+  var ov=document.getElementById('overlay');
+  ov.querySelector('h1').textContent=title;
+  ov.querySelector('p').textContent=body;
+  ov.querySelector('button').textContent=btn;
+  ov.style.display='flex';
 }
 
-function showOverlay(title, body, btn) {
-  var ov = document.getElementById('overlay');
-  ov.querySelector('h1').textContent     = title;
-  ov.querySelector('p').textContent      = body;
-  ov.querySelector('button').textContent = btn;
-  ov.style.display = 'flex';
+function startMove(d){moveStone(d);clearInterval(moveTimer);moveTimer=setInterval(function(){moveStone(d);},100);}
+function stopMove(){clearInterval(moveTimer);}
+function startRot(){rotateStone();clearInterval(rotTimer);rotTimer=setInterval(rotateStone,80);}
+function stopRot(){clearInterval(rotTimer);}
+
+function bind(id,dn,up){
+  var el=document.getElementById(id);
+  el.addEventListener('mousedown',function(e){e.preventDefault();dn();el.classList.add('pressed');});
+  el.addEventListener('mouseup',function(){up();el.classList.remove('pressed');});
+  el.addEventListener('mouseleave',function(){up();el.classList.remove('pressed');});
+  el.addEventListener('touchstart',function(e){e.preventDefault();dn();el.classList.add('pressed');},{passive:false});
+  el.addEventListener('touchend',function(){up();el.classList.remove('pressed');});
+  el.addEventListener('touchcancel',function(){up();el.classList.remove('pressed');});
 }
+bind('btn-left',function(){startMove(-1);},stopMove);
+bind('btn-right',function(){startMove(1);},stopMove);
+bind('btn-rotate',startRot,stopRot);
+bind('btn-drop',dropStone,function(){});
 
-// ── BUTTON BINDINGS ───────────────────────────────────────────────────────────
-function startMove(d) { moveStone(d); clearInterval(moveTimer); moveTimer = setInterval(function(){ moveStone(d); }, 100); }
-function stopMove()   { clearInterval(moveTimer); }
-function startRot()   { rotateStone(); clearInterval(rotTimer); rotTimer = setInterval(rotateStone, 80); }
-function stopRot()    { clearInterval(rotTimer); }
-
-function bind(id, dn, up) {
-  var el = document.getElementById(id);
-  el.addEventListener('mousedown',  function(e){ e.preventDefault(); dn(); el.classList.add('pressed'); });
-  el.addEventListener('mouseup',    function(){ up(); el.classList.remove('pressed'); });
-  el.addEventListener('mouseleave', function(){ up(); el.classList.remove('pressed'); });
-  el.addEventListener('touchstart', function(e){ e.preventDefault(); dn(); el.classList.add('pressed'); }, {passive:false});
-  el.addEventListener('touchend',   function(){ up(); el.classList.remove('pressed'); });
-  el.addEventListener('touchcancel',function(){ up(); el.classList.remove('pressed'); });
-}
-
-bind('btn-left',   function(){ startMove(-1); }, stopMove);
-bind('btn-right',  function(){ startMove(1);  }, stopMove);
-bind('btn-rotate', startRot, stopRot);
-bind('btn-drop',   dropStone, function(){});
-
-document.addEventListener('keydown', function(e) {
-  if (state !== 'playing') return;
-  if (e.key === 'ArrowLeft')  { e.preventDefault(); startMove(-1); }
-  if (e.key === 'ArrowRight') { e.preventDefault(); startMove(1);  }
-  if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); dropStone(); }
-  if (e.key === 'ArrowUp'   || e.key === 'z') { e.preventDefault(); startRot(); }
+document.addEventListener('keydown',function(e){
+  if(state!=='playing')return;
+  if(e.key==='ArrowLeft'){e.preventDefault();startMove(-1);}
+  if(e.key==='ArrowRight'){e.preventDefault();startMove(1);}
+  if(e.key==='ArrowDown'||e.key===' '){e.preventDefault();dropStone();}
+  if(e.key==='ArrowUp'||e.key==='z'){e.preventDefault();startRot();}
 });
-document.addEventListener('keyup', function(e) {
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') stopMove();
-  if (e.key === 'ArrowUp'   || e.key === 'z')          stopRot();
+document.addEventListener('keyup',function(e){
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight')stopMove();
+  if(e.key==='ArrowUp'||e.key==='z')stopRot();
 });
 
-var txStart = null;
-canvas.addEventListener('touchstart', function(e){ txStart = e.touches[0].clientX; }, {passive:true});
-canvas.addEventListener('touchmove',  function(e){
-  if (txStart === null) return;
-  var dx = e.touches[0].clientX - txStart;
-  if (Math.abs(dx) > 14) { moveStone(dx > 0 ? 1 : -1); txStart = e.touches[0].clientX; }
-}, {passive:true});
-canvas.addEventListener('touchend', function(){ txStart = null; });
+var txStart=null;
+canvas.addEventListener('touchstart',function(e){txStart=e.touches[0].clientX;},{passive:true});
+canvas.addEventListener('touchmove',function(e){
+  if(txStart===null)return;
+  var dx=e.touches[0].clientX-txStart;
+  if(Math.abs(dx)>14){moveStone(dx>0?1:-1);txStart=e.touches[0].clientX;}
+},{passive:true});
+canvas.addEventListener('touchend',function(){txStart=null;});
 
-// ── START / RESTART ───────────────────────────────────────────────────────────
-function startGame() {
-  score = 0; stage = 1; colorIdx = 0;
-  state = 'playing'; activeStone = null;
-  if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-  document.getElementById('overlay').style.display = 'none';
-  updateHUD();
-  initPhysics();
-  setTimeout(spawnStone, 300);
+function startGame(){
+  score=0;stage=1;colorIdx=0;state='playing';activeStone=null;
+  if(settleTimer){clearTimeout(settleTimer);settleTimer=null;}
+  document.getElementById('overlay').style.display='none';
+  updateHUD(); initPhysics();
+  setTimeout(spawnStone,300);
 }
-
-document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('start-btn').addEventListener('click',startGame);
 requestAnimationFrame(draw);
-
 })();
 </script>
 </body>
