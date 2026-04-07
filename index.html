@@ -235,7 +235,7 @@ function initPhysics() {
 
 function createStone(idx, cx, cy) {
   var def = SHAPES[idx % SHAPES.length];
-  var opts = {friction:0.5, restitution:0.05, frictionAir:0.001, density:0.004, isStatic:true, label:'stone'};
+  var opts = {friction:0.4, restitution:0.15, frictionAir:0.001, density:0.003, isStatic:true, label:'stone'};
   var body;
   try {
     body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts, true);
@@ -274,8 +274,7 @@ function dropStone() {
   Body.setStatic(activeStone, false);
   Body.setVelocity(activeStone, {x:0, y:0});
   Body.setAngularVelocity(activeStone, 0);
-  // 慣性を下げて衝突・着地時に自然に回転しやすくする
-  Body.setInertia(activeStone, activeStone.inertia * 0.25);
+  // setInertia は compound body に正しく効かないので使わない
 }
 
 // Settle detection
@@ -287,7 +286,11 @@ setInterval(function() {
       settleTimer = setTimeout(function() {
         settleTimer = null;
         if (activeStone && !activeStone.isStatic && activeStone.speed < 2) {
+          var settled = activeStone;
           activeStone = null;
+          // 着地したピースは動きにくくする（押されて滑らないように）
+          settled.frictionAir = 0.08;
+          Body.setAngularVelocity(settled, 0);
           checkClear();
           if (state === 'playing') setTimeout(spawnStone, 400);
         }
