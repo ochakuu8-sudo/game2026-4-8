@@ -142,52 +142,55 @@ function ngon(n, r) {
   return v;
 }
 
-// --- SHAPES (all centered at origin) ---
+// Scale helper: shrink all verts by factor
+function sc(verts, f) { return verts.map(function(v){return {x:v.x*f,y:v.y*f};}); }
+
+// --- SHAPES (all centered at origin, radius ~32px) ---
 var SHAPES = [
   // 5-pointed star
-  { label:'★', color:null, verts: star(5, 55, 22) },
+  { label:'★', color:null, verts: star(5, 33, 13) },
   // 4-pointed star
-  { label:'✦', color:null, verts: star(4, 55, 20) },
+  { label:'✦', color:null, verts: star(4, 33, 12) },
   // 6-pointed star
-  { label:'✶', color:null, verts: star(6, 52, 24) },
+  { label:'✶', color:null, verts: star(6, 31, 14) },
   // Cross / plus
-  { label:'✚', color:null, verts: [
-    {x:-16,y:-55},{x:16,y:-55},
-    {x:16,y:-16},{x:55,y:-16},
-    {x:55,y:16},{x:16,y:16},
-    {x:16,y:55},{x:-16,y:55},
-    {x:-16,y:16},{x:-55,y:16},
-    {x:-55,y:-16},{x:-16,y:-16}
-  ]},
+  { label:'✚', color:null, verts: sc([
+    {x:-10,y:-33},{x:10,y:-33},
+    {x:10,y:-10},{x:33,y:-10},
+    {x:33,y:10},{x:10,y:10},
+    {x:10,y:33},{x:-10,y:33},
+    {x:-10,y:10},{x:-33,y:10},
+    {x:-33,y:-10},{x:-10,y:-10}
+  ], 1) },
   // Up arrow
-  { label:'▲▲', color:null, verts: [
-    {x:0,y:-58},{x:40,y:-8},{x:18,y:-8},
-    {x:18,y:55},{x:-18,y:55},{x:-18,y:-8},{x:-40,y:-8}
-  ]},
+  { label:'▲', color:null, verts: sc([
+    {x:0,y:-35},{x:24,y:-5},{x:11,y:-5},
+    {x:11,y:33},{x:-11,y:33},{x:-11,y:-5},{x:-24,y:-5}
+  ], 1) },
   // Lightning bolt
-  { label:'⚡', color:null, verts: [
-    {x:18,y:-58},{x:-8,y:-2},{x:20,y:-2},
-    {x:-18,y:58},{x:8,y:2},{x:-20,y:2}
-  ]},
+  { label:'⚡', color:null, verts: sc([
+    {x:11,y:-35},{x:-5,y:-1},{x:12,y:-1},
+    {x:-11,y:35},{x:5,y:1},{x:-12,y:1}
+  ], 1) },
   // L-shape
-  { label:'L', color:null, verts: [
-    {x:-16,y:-55},{x:16,y:-55},{x:16,y:28},
-    {x:55,y:28},{x:55,y:55},{x:-16,y:55}
-  ]},
+  { label:'L', color:null, verts: sc([
+    {x:-10,y:-33},{x:10,y:-33},{x:10,y:17},
+    {x:33,y:17},{x:33,y:33},{x:-10,y:33}
+  ], 1) },
   // T-shape
-  { label:'T', color:null, verts: [
-    {x:-55,y:-55},{x:55,y:-55},{x:55,y:-20},
-    {x:16,y:-20},{x:16,y:55},{x:-16,y:55},
-    {x:-16,y:-20},{x:-55,y:-20}
-  ]},
+  { label:'T', color:null, verts: sc([
+    {x:-33,y:-33},{x:33,y:-33},{x:33,y:-12},
+    {x:10,y:-12},{x:10,y:33},{x:-10,y:33},
+    {x:-10,y:-12},{x:-33,y:-12}
+  ], 1) },
   // Z-shape
-  { label:'Z', color:null, verts: [
-    {x:-55,y:-55},{x:30,y:-55},{x:30,y:-20},
-    {x:55,y:-20},{x:55,y:55},{x:-30,y:55},
-    {x:-30,y:20},{x:-55,y:20}
-  ]},
+  { label:'Z', color:null, verts: sc([
+    {x:-33,y:-33},{x:18,y:-33},{x:18,y:-12},
+    {x:33,y:-12},{x:33,y:33},{x:-18,y:33},
+    {x:-18,y:12},{x:-33,y:12}
+  ], 1) },
   // Hexagon
-  { label:'⬡', color:null, verts: ngon(6, 52) }
+  { label:'⬡', color:null, verts: ngon(6, 32) }
 ];
 
 // CANVAS
@@ -232,7 +235,7 @@ function initPhysics() {
 
 function createStone(idx, cx, cy) {
   var def = SHAPES[idx % SHAPES.length];
-  var opts = {friction:0.85, restitution:0.03, frictionAir:0.02, density:0.003, isStatic:true, label:'stone'};
+  var opts = {friction:0.6, restitution:0.04, frictionAir:0.004, density:0.004, isStatic:true, label:'stone'};
   var body;
   try {
     body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts, true);
@@ -257,7 +260,7 @@ function spawnStone() {
 function moveStone(dir) {
   if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
   var nx = activeStone.position.x + dir*14;
-  if (nx < WALL_T+42 || nx > WALL_T+WELL_W-42) return;
+  if (nx < WALL_T+26 || nx > WALL_T+WELL_W-26) return;
   Body.setPosition(activeStone, {x:nx, y:activeStone.position.y});
 }
 
@@ -270,7 +273,8 @@ function dropStone() {
   if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
   Body.setStatic(activeStone, false);
   Body.setVelocity(activeStone, {x:0, y:0});
-  Body.setAngularVelocity(activeStone, 0);
+  // ランダムに少し回転を加えて自然な転がりに
+  Body.setAngularVelocity(activeStone, (Math.random() - 0.5) * 0.25);
 }
 
 // Settle detection
@@ -453,7 +457,7 @@ function draw() {
       ctx.save();
       ctx.translate(b.position.x, b.position.y);
       ctx.rotate(b.angle);
-      ctx.font = 'bold 36px sans-serif';
+      ctx.font = 'bold 22px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
