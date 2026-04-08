@@ -279,6 +279,9 @@ function triggerExplosion(cx,cy){
   // Delay check
   setTimeout(function(){
     checkClear();
+    if(state==='playing'){
+      setTimeout(spawnBomb,400);
+    }
   },1200);
 }
 
@@ -378,66 +381,18 @@ function clipAbove(verts,y1){
 }
 
 function checkClear(){
-  refreshRatios();
-  var cleared=false;
-  for(var i=0;i<NUM_BANDS;i++){
-    if(bandRatios[i]>=CLEAR_THRESHOLD){
-      cleared=true;
-      sliceBand(i*BAND_H,(i+1)*BAND_H);
-      linesCleared++;
-      score+=1000;
-      updateHUD();
-      for(var j=0;j<3;j++){
-        setTimeout(function(){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,1));},400+j*100);
-      }
-    }
-  }
-  if(cleared){
-    state='clearing';
-    setTimeout(function(){
-      refreshRatios();
-      state='playing';
-      setTimeout(spawnBomb,400);
-    },600);
-  } else {
-    state='playing';
-    setTimeout(spawnBomb,400);
-  }
-}
-
-function sliceBand(y1,y2){
+  // Check if all blocks are destroyed
   var blocks=Composite.allBodies(world).filter(function(b){return b.label==='block';});
-  var cleared=false;
-  blocks.forEach(function(b){
-    var isComp=b.parts&&b.parts.length>1;
-    var pp=isComp?b.parts.slice(1):[b];
-    var allV=[].concat.apply([],pp.map(function(p){return p.vertices||[];}));
-    var minY=Math.min.apply(null,allV.map(function(v){return v.y;}));
-    var maxY=Math.max.apply(null,allV.map(function(v){return v.y;}));
-    if(minY>=y1&&maxY<=y2){
-      Composite.remove(world,b);
-      cleared=true;
-    } else if(maxY>y1&&minY<y2){
-      Composite.remove(world,b);
-      cleared=true;
-      if(!isComp){
-        var above=clipAbove(b.vertices,y1);
-        if(above.length>=3){
-          try{
-            var nb=Bodies.fromVertices(b.position.x,y1-20,above,{friction:0.5,restitution:0.08,frictionAir:0.01,density:0.004,label:'block'});
-            nb._color=b._color; Composite.add(world,nb);
-          }catch(e){}
-        }
-      }
-    }
-  });
-  if(cleared){initAudio();playSound(600,0.15,'square');playSound(900,0.12,'triangle');playSound(1200,0.08,'sine');flashEffect=0.4;}
+  if(blocks.length===0 && state==='playing'){
+    state='gameclear';
+    showOverlay('Game Clear! &#128163;','Score: '+score,'再スタート');
+  }
 }
 
 // DRAW
 function draw(){
   requestAnimationFrame(draw);
-  if(state==='menu'||state==='gameover') return;
+  if(state==='menu'||state==='gameover'||state==='gameclear') return;
   var cw=canvas.width, ch=canvas.height;
   var offsetX=0, offsetY=0;
   if(screenShake>0){
@@ -450,16 +405,6 @@ function draw(){
   ctx.translate(offsetX,offsetY);
   ctx.fillStyle='#111'; ctx.fillRect(0,0,cw,ch);
   ctx.fillStyle='#171717'; ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
-
-  // Band indicators
-  for(var i=0;i<NUM_BANDS;i++){
-    var y1=i*BAND_H;
-    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(WALL_T,y1); ctx.lineTo(WALL_T+WELL_W,y1); ctx.stroke();
-    var r=bandRatios[i], pct=Math.min(r/CLEAR_THRESHOLD,1);
-    ctx.fillStyle='rgba('+(Math.round(255*(1-pct)))+','+(Math.round(200*pct))+',50,0.22)';
-    ctx.fillRect(WALL_T,y1,WELL_W*r,5);
-  }
 
   // Walls
   ctx.fillStyle='#2a2a2a';
