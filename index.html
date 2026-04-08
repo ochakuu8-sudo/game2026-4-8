@@ -169,10 +169,17 @@ function createBlock(x,y,sizeMultiplier){
 
 function startBlockRain(){
   state='raining';
+  console.log('startBlockRain開始、ブロック生成開始');
   for(var i=0;i<25;i++){
     var x=WALL_T+40+Math.random()*(WELL_W-80);
-    Composite.add(world,createBlock(x,-60,1));
+    try{
+      var block=createBlock(x,-60,1);
+      Composite.add(world,block);
+    }catch(e){
+      console.error('ブロック生成エラー:', e);
+    }
   }
+  console.log('ブロック生成完了、合計25個');
   setTimeout(function(){
     console.log('ブロック落下完了、状態を playing に変更');
     if(state==='raining'){
