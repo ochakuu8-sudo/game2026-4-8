@@ -447,12 +447,11 @@ function draw(){
   ctx.fillStyle='#171717'; ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
 
   // Band indicators
-  var thresh=THRESHOLDS[Math.min(stage-1,2)];
   for(var i=0;i<NUM_BANDS;i++){
     var y1=i*BAND_H;
     ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(WALL_T,y1); ctx.lineTo(WALL_T+WELL_W,y1); ctx.stroke();
-    var r=bandRatios[i], pct=Math.min(r/thresh,1);
+    var r=bandRatios[i], pct=Math.min(r/CLEAR_THRESHOLD,1);
     ctx.fillStyle='rgba('+(Math.round(255*(1-pct)))+','+(Math.round(200*pct))+',50,0.22)';
     ctx.fillRect(WALL_T,y1,WELL_W*r,5);
   }
