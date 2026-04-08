@@ -582,6 +582,9 @@ function startGame(){
   score=0; colorIdx=0; linesCleared=0;
   bomb=null; bombX=WALL_T+WELL_W/2;
   explosionEffects=[];
+  particleEffects=[];
+  screenShake=0;
+  flashEffect=0;
   bombsRemain=bombsMax;
   document.getElementById('overlay').style.display='none';
   updateHUD(); initPhysics(); startBlockRain();
