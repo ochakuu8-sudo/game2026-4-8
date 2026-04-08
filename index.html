@@ -146,12 +146,13 @@ function initPhysics(){
   Runner.run(runner,engine);
 }
 
-function createBlock(x,y){
+function createBlock(x,y,sizeMultiplier){
+  sizeMultiplier=sizeMultiplier||1;
   var vi=Math.floor(Math.random()*SHAPES.length);
-  var verts=SHAPES[vi].map(function(v){return{x:v.x,y:v.y};});
+  var verts=SHAPES[vi].map(function(v){return{x:v.x*sizeMultiplier,y:v.y*sizeMultiplier};});
   var opts={friction:0.5,restitution:0.1,frictionAir:0.005,density:0.003,label:'block'};
   var b;
-  try{ b=Bodies.fromVertices(x,y,verts,opts); } catch(e){ b=Bodies.rectangle(x,y,50,40,opts); }
+  try{ b=Bodies.fromVertices(x,y,verts,opts); } catch(e){ b=Bodies.rectangle(x,y,50*sizeMultiplier,40*sizeMultiplier,opts); }
   Body.setPosition(b,{x:x,y:y});
   Body.setAngularVelocity(b,(Math.random()-0.5)*0.3);
   b._color=COLORS[(colorIdx++)%COLORS.length];
@@ -164,7 +165,8 @@ function startBlockRain(){
   var iv=setInterval(function(){
     if(count>=total){ clearInterval(iv); setTimeout(function(){ console.log('ブロック落下完了、状態を playing に変更'); if(state==='raining'){state='playing';console.log('爆弾を生成します');spawnBomb();console.log('爆弾生成完了:',bomb);} },2500); return; }
     var x=WALL_T+40+Math.random()*(WELL_W-80);
-    Composite.add(world,createBlock(x,-60));
+    var sizeMultiplier=count===0?2.5:1;
+    Composite.add(world,createBlock(x,-60,sizeMultiplier));
     count++;
   },300);
 }
@@ -247,13 +249,17 @@ function shatterBlock(b,cx,cy,dist){
 }
 
 function createFragment(bx,by,cx,cy,color,dist){
-  // Small random convex polygon
-  var r=10+Math.random()*10;
-  var n=3+Math.floor(Math.random()*3);
+  // Distance-based size: closer to center = smaller fragments, farther = larger
+  var distRatio=Math.max(0,1-dist/EXPLOSION_R);
+  var minR=3, maxR=20;
+  var r=minR+(1-distRatio)*(maxR-minR)+Math.random()*5;
+
+  // Irregular polygon with more vertices
+  var n=5+Math.floor(Math.random()*5);
   var verts=[], base=Math.random()*Math.PI*2;
   for(var i=0;i<n;i++){
-    var a=base+(i*2*Math.PI/n)+(Math.random()-0.5)*0.9;
-    var rv=r*(0.5+Math.random()*0.7);
+    var a=base+(i*2*Math.PI/n)+(Math.random()-0.5)*1.2;
+    var rv=r*(0.4+Math.random()*0.9);
     verts.push({x:Math.cos(a)*rv,y:Math.sin(a)*rv});
   }
   var fx=bx+(Math.random()-0.5)*24;
