@@ -61,9 +61,7 @@ canvas { display: block; }
 <body>
 <div id="header">
   <div class="stat">Score<span id="score">0</span></div>
-  <div class="stat">Stage<span id="stage-disp">1</span></div>
-  <div class="stat">Clear<span id="thresh-disp">80%</span></div>
-  <div class="stat">Cleared<span id="cleared-disp">0/5</span></div>
+  <div class="stat">Lines<span id="lines-disp">0</span></div>
   <div class="stat">Bombs<span id="bombs-disp">10/10</span></div>
 </div>
 <div id="canvas-wrap">
@@ -95,8 +93,7 @@ function playJuicySound(freq,duration){if(!audioCtx)return;var now=audioCtx.curr
 
 var WELL_W=280, WELL_H=480, WALL_T=26, BAND_H=30;
 var NUM_BANDS=Math.floor(WELL_H/BAND_H);
-var THRESHOLDS=[0.80,0.70,0.60];
-var CLEAR_TARGET=5;
+var CLEAR_THRESHOLD=0.90;
 var EXPLOSION_R=75;
 var MAX_BOMBS=1;
 
@@ -130,7 +127,7 @@ resize(); window.addEventListener('resize',resize);
 var engine,world,runner;
 var bomb=null, bombX=WALL_T+WELL_W/2;
 var state='menu';
-var score=0, stage=1, colorIdx=0, bandsCleared=0;
+var score=0, colorIdx=0, linesCleared=0;
 var bandRatios=new Array(NUM_BANDS).fill(0);
 var moveTimer=null;
 var explosionEffects=[];
@@ -369,19 +366,17 @@ function clipAbove(verts,y1){
 }
 
 function checkClear(){
-  if(state==='stageclear'||state==='win') return;
   refreshRatios();
-  var thresh=THRESHOLDS[Math.min(stage-1,2)];
   var cleared=false;
   for(var i=0;i<NUM_BANDS;i++){
-    if(bandRatios[i]>=thresh){
+    if(bandRatios[i]>=CLEAR_THRESHOLD){
       cleared=true;
       sliceBand(i*BAND_H,(i+1)*BAND_H);
-      bandsCleared++;
-      score+=1000*stage;
+      linesCleared++;
+      score+=1000;
       updateHUD();
       for(var j=0;j<3;j++){
-        setTimeout(function(){if(state!=='win'){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,1));}},400+j*100);
+        setTimeout(function(){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,1));},400+j*100);
       }
     }
   }
@@ -389,12 +384,8 @@ function checkClear(){
     state='clearing';
     setTimeout(function(){
       refreshRatios();
-      if(bandsCleared>=CLEAR_TARGET){
-        advanceStage();
-      } else {
-        state='playing';
-        setTimeout(spawnBomb,400);
-      }
+      state='playing';
+      setTimeout(spawnBomb,400);
     },600);
   } else {
     state='playing';
@@ -429,21 +420,6 @@ function sliceBand(y1,y2){
     }
   });
   if(cleared){initAudio();playSound(600,0.15,'square');playSound(900,0.12,'triangle');playSound(1200,0.08,'sine');flashEffect=0.4;}
-}
-
-function advanceStage(){
-  if(stage>=3){
-    state='win';
-    showOverlay('You Win! &#128163;','Score: '+score,'Play Again');
-  } else {
-    state='stageclear';
-    stage++; bandsCleared=0;
-    showBanner('Stage '+stage+'!');
-    setTimeout(function(){
-      Composite.allBodies(world).filter(function(b){return b.label==='block';}).forEach(function(b){Composite.remove(world,b);});
-      bomb=null; updateHUD(); startBlockRain();
-    },2000);
-  }
 }
 
 // DRAW
@@ -554,9 +530,7 @@ function draw(){
 
 function updateHUD(){
   document.getElementById('score').textContent=score;
-  document.getElementById('stage-disp').textContent=stage;
-  document.getElementById('thresh-disp').textContent=Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
-  document.getElementById('cleared-disp').textContent=bandsCleared+'/'+CLEAR_TARGET;
+  document.getElementById('lines-disp').textContent=linesCleared;
   document.getElementById('bombs-disp').textContent=bombsRemain+'/'+bombsMax;
 }
 
@@ -610,7 +584,7 @@ canvas.addEventListener('touchmove',function(e){
 canvas.addEventListener('touchend',function(){txStart=null;});
 
 function startGame(){
-  score=0; stage=1; colorIdx=0; bandsCleared=0;
+  score=0; colorIdx=0; linesCleared=0;
   bomb=null; bombX=WALL_T+WELL_W/2;
   explosionEffects=[];
   bombsRemain=bombsMax;
