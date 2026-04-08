@@ -64,6 +64,7 @@ canvas { display: block; }
   <div class="stat">Stage<span id="stage-disp">1</span></div>
   <div class="stat">Clear<span id="thresh-disp">80%</span></div>
   <div class="stat">Cleared<span id="cleared-disp">0/5</span></div>
+  <div class="stat">Bombs<span id="bombs-disp">10/10</span></div>
 </div>
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
@@ -129,6 +130,7 @@ var score=0, stage=1, colorIdx=0, bandsCleared=0;
 var bandRatios=new Array(NUM_BANDS).fill(0);
 var moveTimer=null;
 var explosionEffects=[];
+var bombsMax=10, bombsRemain=10;
 
 function initPhysics(){
   if(runner) Runner.stop(runner);
@@ -186,9 +188,11 @@ function spawnBomb(){
 }
 
 function dropBomb(){
-  if(!bomb||!bomb.isStatic||state!=='playing') return;
+  if(!bomb||!bomb.isStatic||state!=='playing'||bombsRemain<=0) return;
   Body.setStatic(bomb,false);
   Body.setVelocity(bomb,{x:0,y:0});
+  bombsRemain--;
+  updateHUD();
 }
 
 function moveBomb(dir){
@@ -347,6 +351,7 @@ function checkClear(){
       bandsCleared++;
       score+=1000*stage;
       updateHUD();
+      setTimeout(function(){if(state!=='win'){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,2.5));}},400);
     }
   }
   if(cleared){
@@ -487,6 +492,7 @@ function updateHUD(){
   document.getElementById('stage-disp').textContent=stage;
   document.getElementById('thresh-disp').textContent=Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
   document.getElementById('cleared-disp').textContent=bandsCleared+'/'+CLEAR_TARGET;
+  document.getElementById('bombs-disp').textContent=bombsRemain+'/'+bombsMax;
 }
 
 function showBanner(msg){
@@ -542,6 +548,7 @@ function startGame(){
   score=0; stage=1; colorIdx=0; bandsCleared=0;
   bomb=null; bombX=WALL_T+WELL_W/2;
   explosionEffects=[];
+  bombsRemain=bombsMax;
   document.getElementById('overlay').style.display='none';
   updateHUD(); initPhysics(); startBlockRain();
 }
