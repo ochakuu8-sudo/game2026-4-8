@@ -3,74 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Stone Drop</title>
+<title>Bomb Drop</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  background: #0d0d0d;
-  color: #eee;
+  background: #0d0d0d; color: #eee;
   font-family: 'Segoe UI', Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 100vh;
-  overflow: hidden;
-  user-select: none;
+  display: flex; flex-direction: column; align-items: center;
+  min-height: 100vh; overflow: hidden; user-select: none;
 }
 #header {
-  display: flex;
-  gap: 20px;
-  padding: 8px 16px;
-  font-size: 14px;
-  background: rgba(255,255,255,0.05);
-  width: 100%;
-  justify-content: center;
-  align-items: center;
+  display: flex; gap: 16px; padding: 8px 16px;
+  font-size: 13px; background: rgba(255,255,255,0.05);
+  width: 100%; justify-content: center; align-items: center;
 }
 .stat { text-align: center; }
-.stat span { display: block; font-size: 18px; font-weight: bold; color: #fff; }
+.stat span { display: block; font-size: 17px; font-weight: bold; color: #fff; }
 #canvas-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
 canvas { display: block; }
 #controls {
-  display: flex;
-  gap: 8px;
-  padding: 10px;
-  justify-content: center;
-  width: 100%;
-  max-width: 340px;
+  display: flex; gap: 8px; padding: 10px;
+  justify-content: center; width: 100%; max-width: 300px;
 }
 .btn {
-  background: #222;
-  border: 2px solid #444;
-  color: #fff;
-  padding: 14px 10px;
-  border-radius: 10px;
-  font-size: 18px;
-  cursor: pointer;
-  flex: 1;
-  text-align: center;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
+  background: #222; border: 2px solid #444; color: #fff;
+  padding: 14px 10px; border-radius: 10px; font-size: 18px;
+  cursor: pointer; flex: 1; text-align: center;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   transition: background 0.1s;
 }
 .btn:active, .btn.pressed { background: #444; }
-#btn-drop   { background: #1a3a1a; border-color: #2a6a2a; }
-#btn-rotate { background: #1a1a3a; border-color: #2a2a6a; }
+#btn-drop { background: #3a1a1a; border-color: #aa3333; flex: 1.5; }
 #overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  z-index: 100; gap: 18px;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; z-index: 100; gap: 18px;
 }
 #overlay h1 { font-size: 2em; color: #fff; }
 #overlay p  { font-size: 1em; color: #ccc; text-align: center; max-width: 280px; line-height: 1.6; }
 #overlay button {
-  background: #2255cc; color: #fff; border: none;
+  background: #cc3333; color: #fff; border: none;
   padding: 14px 36px; border-radius: 12px;
   font-size: 1.1em; cursor: pointer; touch-action: manipulation;
 }
-#overlay button:active { background: #1144aa; }
+#overlay button:active { background: #aa2222; }
 #banner {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%,-50%);
@@ -87,6 +63,7 @@ canvas { display: block; }
   <div class="stat">Score<span id="score">0</span></div>
   <div class="stat">Stage<span id="stage-disp">1</span></div>
   <div class="stat">Clear<span id="thresh-disp">80%</span></div>
+  <div class="stat">Cleared<span id="cleared-disp">0/5</span></div>
 </div>
 <div id="canvas-wrap">
   <canvas id="c"></canvas>
@@ -94,13 +71,12 @@ canvas { display: block; }
 </div>
 <div id="controls">
   <button class="btn" id="btn-left">&#9664;</button>
-  <button class="btn" id="btn-rotate">&#8635;</button>
-  <button class="btn" id="btn-drop">&#9660; Drop</button>
+  <button class="btn" id="btn-drop">&#128163; BOMB</button>
   <button class="btn" id="btn-right">&#9654;</button>
 </div>
 <div id="overlay">
-  <h1>Stone Drop</h1>
-  <p>&#9664;&#9654; slide &nbsp; &#8635; rotate &nbsp; &#9660; drop<br>Fill bands to clear them!</p>
+  <h1>&#128163; Bomb Drop</h1>
+  <p>ブロックが降ってきます。<br>爆弾を当てて粉々にして<br>バンドを80%以上埋めると消えます！</p>
   <button id="start-btn">Start</button>
 </div>
 
@@ -110,337 +86,405 @@ canvas { display: block; }
 'use strict';
 
 var M = Matter;
-var Engine = M.Engine, Runner = M.Runner, Bodies = M.Bodies, Body = M.Body, Composite = M.Composite, Common = M.Common;
+var Engine=M.Engine, Runner=M.Runner, Bodies=M.Bodies, Body=M.Body, Composite=M.Composite, Events=M.Events;
 
-// poly-decomp 不要（全形状を凸多角形に変更）
+var WELL_W=280, WELL_H=480, WALL_T=26, BAND_H=60;
+var NUM_BANDS=Math.floor(WELL_H/BAND_H);
+var THRESHOLDS=[0.80,0.70,0.60];
+var CLEAR_TARGET=5;
+var EXPLOSION_R=75;
 
-// CONFIG
-var WELL_W = 280, WELL_H = 480, WALL_T = 26, BAND_H = 60;
-var NUM_BANDS = Math.floor(WELL_H / BAND_H);
-var THRESHOLDS = [0.80, 0.70, 0.60];
-var SPAWN_Y = 50;
+var COLORS=['#e05252','#e08832','#d4c830','#52c054','#52b0e0','#7060d8','#d060c0','#40c8a0','#ff7f50','#9370db'];
 
-var COLORS = ['#e05252','#e08832','#d4c830','#52c054','#52b0e0','#7060d8','#d060c0','#40c8a0','#ff7f50','#9370db'];
-
-// --- SHAPES: 全て凸多角形・非対称 (重心が偏り衝突で自然に回転) ---
-var SHAPES = [
-  // 直角三角形 (重心が左寄り)
-  { label:'◁', verts:[{x:-32,y:28},{x:32,y:28},{x:-32,y:-28}] },
-  // 斜め三角形 (頂点が右にずれた)
-  { label:'△', verts:[{x:20,y:-32},{x:35,y:28},{x:-30,y:22}] },
-  // 広い台形 (下底が左にずれた)
-  { label:'⏢', verts:[{x:-35,y:24},{x:30,y:24},{x:16,y:-24},{x:-20,y:-24}] },
-  // 平行四辺形
-  { label:'▱', verts:[{x:-32,y:22},{x:12,y:22},{x:32,y:-22},{x:-12,y:-22}] },
-  // くさび型 (頂点が右にずれた三角)
-  { label:'▶', verts:[{x:-30,y:28},{x:35,y:28},{x:8,y:-30}] },
-  // 非対称五角形
-  { label:'⬠', verts:[{x:8,y:-33},{x:35,y:-5},{x:28,y:33},{x:-22,y:33},{x:-35,y:0}] },
-  // 斜めの四角形 (ひし形崩れ)
-  { label:'◆', verts:[{x:-12,y:-32},{x:28,y:-18},{x:22,y:32},{x:-32,y:18}] },
-  // 矢じり型 (凸・非対称)
-  { label:'▷', verts:[{x:-28,y:-28},{x:35,y:0},{x:18,y:32},{x:-15,y:32},{x:-35,y:8}] },
-  // 細長い斜め台形
-  { label:'▬', verts:[{x:-35,y:14},{x:25,y:22},{x:35,y:-14},{x:-25,y:-22}] },
-  // 非対称六角形 (各頂点の距離がバラバラ)
-  { label:'⬡', verts:[{x:12,y:-33},{x:35,y:-8},{x:30,y:25},{x:-5,y:33},{x:-35,y:10},{x:-28,y:-25}] }
+// Block shapes (asymmetric convex polygons, ~32px radius)
+var SHAPES=[
+  [{x:-32,y:28},{x:32,y:28},{x:-32,y:-28}],
+  [{x:20,y:-32},{x:35,y:28},{x:-30,y:22}],
+  [{x:-35,y:24},{x:30,y:24},{x:16,y:-24},{x:-20,y:-24}],
+  [{x:-32,y:22},{x:12,y:22},{x:32,y:-22},{x:-12,y:-22}],
+  [{x:-30,y:28},{x:35,y:28},{x:8,y:-30}],
+  [{x:8,y:-33},{x:35,y:-5},{x:28,y:33},{x:-22,y:33},{x:-35,y:0}],
+  [{x:-12,y:-32},{x:28,y:-18},{x:22,y:32},{x:-32,y:18}],
+  [{x:-28,y:-28},{x:35,y:0},{x:18,y:32},{x:-15,y:32},{x:-35,y:8}],
+  [{x:-35,y:14},{x:25,y:22},{x:35,y:-14},{x:-25,y:-22}],
+  [{x:12,y:-33},{x:35,y:-8},{x:30,y:25},{x:-5,y:33},{x:-35,y:10},{x:-28,y:-25}]
 ];
 
-// CANVAS
-var canvas = document.getElementById('c');
-var ctx = canvas.getContext('2d');
+var canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
 
-function resize() {
-  var vw = window.innerWidth;
-  var vh = window.innerHeight - 60 - 80;
-  var s = Math.min(1, vw/(WELL_W+2*WALL_T+16), vh/(WELL_H+WALL_T+16));
-  canvas.width  = WELL_W + 2*WALL_T;
-  canvas.height = WELL_H + WALL_T;
-  canvas.style.width  = Math.round((WELL_W+2*WALL_T)*s)+'px';
-  canvas.style.height = Math.round((WELL_H+WALL_T)*s)+'px';
+function resize(){
+  var vw=window.innerWidth, vh=window.innerHeight-60-80;
+  var s=Math.min(1,vw/(WELL_W+2*WALL_T+16),vh/(WELL_H+WALL_T+16));
+  canvas.width=WELL_W+2*WALL_T; canvas.height=WELL_H+WALL_T;
+  canvas.style.width=Math.round((WELL_W+2*WALL_T)*s)+'px';
+  canvas.style.height=Math.round((WELL_H+WALL_T)*s)+'px';
 }
-resize();
-window.addEventListener('resize', resize);
+resize(); window.addEventListener('resize',resize);
 
-// STATE
-var engine, world, runner;
-var activeStone = null;
-var state = 'menu';
-var score = 0, stage = 1, colorIdx = 0;
-var bandRatios = new Array(NUM_BANDS).fill(0);
-var moveTimer = null, rotTimer = null, settleTimer = null;
+var engine,world,runner;
+var bomb=null, bombX=WALL_T+WELL_W/2;
+var state='menu';
+var score=0, stage=1, colorIdx=0, bandsCleared=0;
+var bandRatios=new Array(NUM_BANDS).fill(0);
+var moveTimer=null;
+var explosionEffects=[];
 
-function initPhysics() {
-  if (runner) Runner.stop(runner);
-  if (engine) Engine.clear(engine);
-  engine = Engine.create({ gravity:{x:0,y:1.5} });
-  world = engine.world;
-  runner = Runner.create();
-  var wo = {isStatic:true, friction:0.9, restitution:0.02, label:'wall'};
-  var cx = WALL_T + WELL_W/2;
-  Composite.add(world, [
-    Bodies.rectangle(WALL_T/2,                   WELL_H/2,          WALL_T,            WELL_H+2*WALL_T, wo),
-    Bodies.rectangle(WALL_T+WELL_W+WALL_T/2,     WELL_H/2,          WALL_T,            WELL_H+2*WALL_T, wo),
-    Bodies.rectangle(cx,                          WELL_H+WALL_T/2,   WELL_W+2*WALL_T,   WALL_T,          wo)
+function initPhysics(){
+  if(runner) Runner.stop(runner);
+  if(engine) Engine.clear(engine);
+  engine=Engine.create({gravity:{x:0,y:1.5}});
+  world=engine.world;
+  runner=Runner.create();
+  var wo={isStatic:true,friction:0.9,restitution:0.02,label:'wall'};
+  var cx=WALL_T+WELL_W/2;
+  Composite.add(world,[
+    Bodies.rectangle(WALL_T/2,WELL_H/2,WALL_T,WELL_H+2*WALL_T,wo),
+    Bodies.rectangle(WALL_T+WELL_W+WALL_T/2,WELL_H/2,WALL_T,WELL_H+2*WALL_T,wo),
+    Bodies.rectangle(cx,WELL_H+WALL_T/2,WELL_W+2*WALL_T,WALL_T,wo)
   ]);
-  Runner.run(runner, engine);
+  setupBombCollision();
+  Runner.run(runner,engine);
 }
 
-function createStone(idx, cx, cy) {
-  var def = SHAPES[idx % SHAPES.length];
-  var opts = {friction:0.45, restitution:0.12, frictionAir:0.001, density:0.003, isStatic:true, label:'stone'};
-  var body;
-  try {
-    // 全形状が凸多角形なので flagInternal 不要・分解不要
-    body = Bodies.fromVertices(cx, cy, def.verts.map(function(v){return {x:v.x,y:v.y};}), opts);
-  } catch(e) {
-    body = Bodies.rectangle(cx, cy, 60, 40, opts);
+function createBlock(x,y){
+  var vi=Math.floor(Math.random()*SHAPES.length);
+  var verts=SHAPES[vi].map(function(v){return{x:v.x,y:v.y};});
+  var opts={friction:0.5,restitution:0.1,frictionAir:0.005,density:0.003,label:'block'};
+  var b;
+  try{ b=Bodies.fromVertices(x,y,verts,opts); } catch(e){ b=Bodies.rectangle(x,y,50,40,opts); }
+  Body.setPosition(b,{x:x,y:y});
+  Body.setAngularVelocity(b,(Math.random()-0.5)*0.3);
+  b._color=COLORS[(colorIdx++)%COLORS.length];
+  return b;
+}
+
+function startBlockRain(){
+  state='raining';
+  var count=0, total=10;
+  var iv=setInterval(function(){
+    if(count>=total){ clearInterval(iv); setTimeout(function(){ if(state==='raining'){state='playing';} },2500); return; }
+    var x=WALL_T+40+Math.random()*(WELL_W-80);
+    Composite.add(world,createBlock(x,-60));
+    count++;
+  },300);
+}
+
+function spawnBomb(){
+  if(bomb) return;
+  bomb=Bodies.circle(bombX,30,11,{
+    friction:0.1,restitution:0.1,frictionAir:0.001,density:0.008,
+    isStatic:true,label:'bomb',isSensor:false
+  });
+  bomb._exploded=false;
+  Composite.add(world,bomb);
+}
+
+function dropBomb(){
+  if(!bomb||!bomb.isStatic||state!=='playing') return;
+  Body.setStatic(bomb,false);
+  Body.setVelocity(bomb,{x:0,y:0});
+}
+
+function moveBomb(dir){
+  if(!bomb||!bomb.isStatic||state!=='playing') return;
+  var nx=bomb.position.x+dir*14;
+  if(nx<WALL_T+15||nx>WALL_T+WELL_W-15) return;
+  bombX=nx;
+  Body.setPosition(bomb,{x:nx,y:bomb.position.y});
+}
+
+function setupBombCollision(){
+  Events.on(engine,'collisionStart',function(ev){
+    ev.pairs.forEach(function(p){
+      var bA=p.bodyA,bB=p.bodyB;
+      var b=null;
+      if(bA.label==='bomb'&&!bA._exploded) b=bA;
+      else if(bB.label==='bomb'&&!bB._exploded) b=bB;
+      if(b&&!b.isStatic){
+        b._exploded=true;
+        var cx=b.position.x, cy=b.position.y;
+        setTimeout(function(){
+          if(bomb===b){ Composite.remove(world,b); bomb=null; }
+          triggerExplosion(cx,cy);
+        },0);
+      }
+    });
+  });
+}
+
+function triggerExplosion(cx,cy){
+  explosionEffects.push({x:cx,y:cy,r:5,maxR:EXPLOSION_R,alpha:1});
+  // Shatter all blocks within radius
+  var blocks=Composite.allBodies(world).filter(function(b){return b.label==='block';});
+  blocks.forEach(function(b){
+    var dx=b.position.x-cx, dy=b.position.y-cy;
+    var dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<EXPLOSION_R+35){
+      shatterBlock(b,cx,cy,dist);
+    }
+  });
+  // Delay check
+  state='exploding';
+  setTimeout(function(){
+    checkClear();
+    if(state==='exploding'){
+      state='playing';
+      setTimeout(spawnBomb,600);
+    }
+  },1200);
+}
+
+function shatterBlock(b,cx,cy,dist){
+  Composite.remove(world,b);
+  var color=b._color;
+  var bx=b.position.x, by=b.position.y;
+  var numFrags=4+Math.floor(Math.random()*3);
+  for(var i=0;i<numFrags;i++){
+    var frag=createFragment(bx,by,cx,cy,color,dist);
+    if(frag) Composite.add(world,frag);
   }
-  Body.setPosition(body, {x:cx, y:cy});
-  body._color  = COLORS[(colorIdx++)%COLORS.length];
-  body._label  = def.label;
-  body._idx    = idx;
+  score+=200;
+}
+
+function createFragment(bx,by,cx,cy,color,dist){
+  // Small random convex polygon
+  var r=10+Math.random()*10;
+  var n=3+Math.floor(Math.random()*3);
+  var verts=[], base=Math.random()*Math.PI*2;
+  for(var i=0;i<n;i++){
+    var a=base+(i*2*Math.PI/n)+(Math.random()-0.5)*0.9;
+    var rv=r*(0.5+Math.random()*0.7);
+    verts.push({x:Math.cos(a)*rv,y:Math.sin(a)*rv});
+  }
+  var fx=bx+(Math.random()-0.5)*24;
+  var fy=by+(Math.random()-0.5)*24;
+  var body;
+  try{ body=Bodies.fromVertices(fx,fy,verts,{friction:0.5,restitution:0.08,frictionAir:0.008,density:0.004,label:'block'}); }
+  catch(e){ body=Bodies.circle(fx,fy,r,{friction:0.5,restitution:0.08,frictionAir:0.008,density:0.004,label:'block'}); }
+  Body.setPosition(body,{x:fx,y:fy});
+  body._color=color;
+  // Explosion impulse
+  var dx=bx-cx, dy=by-cy;
+  var d=Math.max(Math.sqrt(dx*dx+dy*dy),5);
+  var strength=Math.max(0.3,1-dist/EXPLOSION_R)*8;
+  Body.setVelocity(body,{
+    x:(dx/d)*strength*(0.6+Math.random()*0.8)+(Math.random()-0.5)*3,
+    y:(dy/d)*strength*(0.6+Math.random()*0.8)-2
+  });
+  Body.setAngularVelocity(body,(Math.random()-0.5)*0.6);
   return body;
 }
 
-function spawnStone() {
-  if (state !== 'playing') return;
-  var idx = Math.floor(Math.random() * SHAPES.length);
-  var s = createStone(idx, WALL_T + WELL_W/2, SPAWN_Y);
-  Composite.add(world, s);
-  activeStone = s;
-}
-
-function moveStone(dir) {
-  if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
-  var nx = activeStone.position.x + dir*14;
-  if (nx < WALL_T+26 || nx > WALL_T+WELL_W-26) return;
-  Body.setPosition(activeStone, {x:nx, y:activeStone.position.y});
-}
-
-function rotateStone() {
-  if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
-  Body.setAngle(activeStone, activeStone.angle + 0.15);
-}
-
-function dropStone() {
-  if (!activeStone || !activeStone.isStatic || state !== 'playing') return;
-  Body.setStatic(activeStone, false);
-  Body.setVelocity(activeStone, {x:0, y:0});
-  Body.setAngularVelocity(activeStone, 0);
-  // setInertia は compound body に正しく効かないので使わない
-}
-
-// Settle detection
-setInterval(function() {
-  if (state !== 'playing' || !activeStone || activeStone.isStatic) return;
-  var moving = activeStone.speed > 0.5 || Math.abs(activeStone.angularVelocity) > 0.02;
-  if (!moving && activeStone.position.y > SPAWN_Y+30) {
-    if (!settleTimer) {
-      settleTimer = setTimeout(function() {
-        settleTimer = null;
-        if (activeStone && !activeStone.isStatic && activeStone.speed < 2) {
-          var settled = activeStone;
-          activeStone = null;
-          // 着地したピースは動きにくくする（押されて滑らないように）
-          settled.frictionAir = 0.08;
-          Body.setAngularVelocity(settled, 0);
-          checkClear();
-          if (state === 'playing') setTimeout(spawnStone, 400);
-        }
-      }, 700);
-    }
-  } else {
-    if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-  }
-}, 150);
-
-// Band fill ratio
-function computeRatio(y1, y2) {
-  var bh = y2-y1;
-  var oc = document.createElement('canvas');
-  oc.width = WELL_W; oc.height = bh;
-  var octx = oc.getContext('2d');
-  Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;}).forEach(function(b) {
-    var pp = (b.parts && b.parts.length>1) ? b.parts.slice(1) : [b];
-    pp.forEach(function(p) {
-      var v = p.vertices; if (!v||v.length<3) return;
+// Band fill
+function computeRatio(y1,y2){
+  var bh=y2-y1;
+  var oc=document.createElement('canvas');
+  oc.width=WELL_W; oc.height=bh;
+  var octx=oc.getContext('2d');
+  Composite.allBodies(world).filter(function(b){return b.label==='block';}).forEach(function(b){
+    var pp=(b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
+    pp.forEach(function(p){
+      var v=p.vertices; if(!v||v.length<3) return;
       octx.beginPath();
-      octx.moveTo(v[0].x-WALL_T, v[0].y-y1);
-      for (var i=1;i<v.length;i++) octx.lineTo(v[i].x-WALL_T, v[i].y-y1);
+      octx.moveTo(v[0].x-WALL_T,v[0].y-y1);
+      for(var i=1;i<v.length;i++) octx.lineTo(v[i].x-WALL_T,v[i].y-y1);
       octx.closePath(); octx.fillStyle='#fff'; octx.fill();
     });
   });
-  var px = octx.getImageData(0,0,WELL_W,bh).data;
-  var n = 0;
-  for (var i=3;i<px.length;i+=4) if (px[i]>128) n++;
+  var px=octx.getImageData(0,0,WELL_W,bh).data;
+  var n=0;
+  for(var i=3;i<px.length;i+=4) if(px[i]>128) n++;
   return n/(WELL_W*bh);
 }
 
-function refreshRatios() {
-  if (!engine) return;
-  for (var i=0;i<NUM_BANDS;i++) bandRatios[i] = computeRatio(i*BAND_H,(i+1)*BAND_H);
+function refreshRatios(){
+  if(!engine) return;
+  for(var i=0;i<NUM_BANDS;i++) bandRatios[i]=computeRatio(i*BAND_H,(i+1)*BAND_H);
 }
-setInterval(refreshRatios, 280);
+setInterval(refreshRatios,300);
 
-// Polygon clip (keep above y1)
-function clipAbove(verts, y1) {
-  var res=[], n=verts.length;
-  for (var i=0;i<n;i++) {
-    var a=verts[i], b=verts[(i+1)%n];
-    var aIn=a.y<y1, bIn=b.y<y1, t;
-    if (aIn&&bIn) res.push({x:b.x,y:b.y});
-    else if (aIn) { t=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t*(b.x-a.x),y:y1}); }
-    else if (bIn) { t=(y1-a.y)/(b.y-a.y); res.push({x:a.x+t*(b.x-a.x),y:y1}); res.push({x:b.x,y:b.y}); }
+function clipAbove(verts,y1){
+  var res=[],n=verts.length;
+  for(var i=0;i<n;i++){
+    var a=verts[i],b=verts[(i+1)%n],t;
+    var aIn=a.y<y1,bIn=b.y<y1;
+    if(aIn&&bIn) res.push({x:b.x,y:b.y});
+    else if(aIn){t=(y1-a.y)/(b.y-a.y);res.push({x:a.x+t*(b.x-a.x),y:y1});}
+    else if(bIn){t=(y1-a.y)/(b.y-a.y);res.push({x:a.x+t*(b.x-a.x),y:y1});res.push({x:b.x,y:b.y});}
   }
   return res;
 }
 
-function checkClear() {
-  if (state !== 'playing') return;
+function checkClear(){
+  if(state==='stageclear'||state==='win') return;
   refreshRatios();
-  var thresh = THRESHOLDS[stage-1];
-  var cleared = false;
-  for (var i=0;i<NUM_BANDS;i++) {
-    if (bandRatios[i] >= thresh) {
-      cleared = true;
+  var thresh=THRESHOLDS[Math.min(stage-1,2)];
+  var cleared=false;
+  for(var i=0;i<NUM_BANDS;i++){
+    if(bandRatios[i]>=thresh){
+      cleared=true;
       sliceBand(i*BAND_H,(i+1)*BAND_H);
-      score += 1000*stage;
+      bandsCleared++;
+      score+=1000*stage;
       updateHUD();
     }
   }
-  if (cleared) {
-    state = 'clearing';
-    setTimeout(function() { refreshRatios(); state='playing'; checkTopReached(); }, 500);
+  if(cleared){
+    state='clearing';
+    setTimeout(function(){
+      refreshRatios();
+      if(bandsCleared>=CLEAR_TARGET){
+        advanceStage();
+      } else {
+        state='playing';
+        setTimeout(spawnBomb,400);
+      }
+    },600);
+  } else {
+    state='playing';
+    setTimeout(spawnBomb,400);
   }
 }
 
-function sliceBand(y1, y2) {
-  var stones = Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;});
-  stones.forEach(function(b) {
-    var isComp = b.parts && b.parts.length>1;
-    var pp = isComp ? b.parts.slice(1) : [b];
-    var allV = [].concat.apply([], pp.map(function(p){return p.vertices||[];}));
-    var minY = Math.min.apply(null, allV.map(function(v){return v.y;}));
-    var maxY = Math.max.apply(null, allV.map(function(v){return v.y;}));
-    if (minY>=y1 && maxY<=y2) {
-      Composite.remove(world, b);
-    } else if (maxY>y1 && minY<y2) {
-      Composite.remove(world, b);
-      if (!isComp) {
-        var above = clipAbove(b.vertices, y1);
-        if (above.length>=3) {
-          try {
-            var nb = Bodies.fromVertices(b.position.x, y1-25, above, {
-              friction:0.85,restitution:0.03,frictionAir:0.02,density:0.003,label:'stone'
-            }, true);
-            nb._color = b._color; nb._label = b._label;
-            Composite.add(world, nb);
-          } catch(e) {}
+function sliceBand(y1,y2){
+  var blocks=Composite.allBodies(world).filter(function(b){return b.label==='block';});
+  blocks.forEach(function(b){
+    var isComp=b.parts&&b.parts.length>1;
+    var pp=isComp?b.parts.slice(1):[b];
+    var allV=[].concat.apply([],pp.map(function(p){return p.vertices||[];}));
+    var minY=Math.min.apply(null,allV.map(function(v){return v.y;}));
+    var maxY=Math.max.apply(null,allV.map(function(v){return v.y;}));
+    if(minY>=y1&&maxY<=y2){
+      Composite.remove(world,b);
+    } else if(maxY>y1&&minY<y2){
+      Composite.remove(world,b);
+      if(!isComp){
+        var above=clipAbove(b.vertices,y1);
+        if(above.length>=3){
+          try{
+            var nb=Bodies.fromVertices(b.position.x,y1-20,above,{friction:0.5,restitution:0.08,frictionAir:0.01,density:0.004,label:'block'});
+            nb._color=b._color; Composite.add(world,nb);
+          }catch(e){}
         }
       }
     }
   });
 }
 
-function checkTopReached() {
-  if (state !== 'playing') return;
-  var stones = Composite.allBodies(world).filter(function(b){return b.label==='stone'&&!b.isStatic;});
-  if (!stones.length) return;
-  var allY = [].concat.apply([], stones.map(function(b){
-    var pp = (b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
-    return [].concat.apply([], pp.map(function(p){return (p.vertices||[]).map(function(v){return v.y;});}));
-  }));
-  if (Math.min.apply(null,allY) < 55) {
-    if (stage>=3) { state='win'; showOverlay('You Win!','Score: '+score,'Play Again'); }
-    else {
-      state='stageclear'; stage++;
-      showBanner('Stage '+stage+'!');
-      setTimeout(function(){
-        Composite.allBodies(world).filter(function(b){return b.label==='stone';}).forEach(function(b){Composite.remove(world,b);});
-        activeStone=null; state='playing'; updateHUD(); spawnStone();
-      }, 2000);
-    }
+function advanceStage(){
+  if(stage>=3){
+    state='win';
+    showOverlay('You Win! &#128163;','Score: '+score,'Play Again');
+  } else {
+    state='stageclear';
+    stage++; bandsCleared=0;
+    showBanner('Stage '+stage+'!');
+    setTimeout(function(){
+      Composite.allBodies(world).filter(function(b){return b.label==='block';}).forEach(function(b){Composite.remove(world,b);});
+      bomb=null; updateHUD(); startBlockRain();
+    },2000);
   }
 }
 
-// RENDER
-function draw() {
+// DRAW
+function draw(){
   requestAnimationFrame(draw);
-  if (state!=='playing'&&state!=='clearing'&&state!=='stageclear') return;
+  if(state==='menu') return;
   var cw=canvas.width, ch=canvas.height;
   ctx.clearRect(0,0,cw,ch);
   ctx.fillStyle='#111'; ctx.fillRect(0,0,cw,ch);
   ctx.fillStyle='#171717'; ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
 
-  var thresh = THRESHOLDS[stage-1];
-  for (var i=0;i<NUM_BANDS;i++) {
+  // Band indicators
+  var thresh=THRESHOLDS[Math.min(stage-1,2)];
+  for(var i=0;i<NUM_BANDS;i++){
     var y1=i*BAND_H;
     ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(WALL_T,y1); ctx.lineTo(WALL_T+WELL_W,y1); ctx.stroke();
     var r=bandRatios[i], pct=Math.min(r/thresh,1);
-    ctx.fillStyle='rgba('+Math.round(255*(1-pct))+','+Math.round(200*pct)+',50,0.22)';
+    ctx.fillStyle='rgba('+(Math.round(255*(1-pct)))+','+(Math.round(200*pct))+',50,0.22)';
     ctx.fillRect(WALL_T,y1,WELL_W*r,5);
   }
 
+  // Walls
   ctx.fillStyle='#2a2a2a';
-  ctx.fillRect(0,0,WALL_T,ch);
-  ctx.fillRect(WALL_T+WELL_W,0,WALL_T,ch);
-  ctx.fillRect(0,WELL_H,cw,WALL_T);
-  ctx.strokeStyle='#555'; ctx.lineWidth=2;
-  ctx.strokeRect(WALL_T,0,WELL_W,WELL_H);
+  ctx.fillRect(0,0,WALL_T,ch); ctx.fillRect(WALL_T+WELL_W,0,WALL_T,ch); ctx.fillRect(0,WELL_H,cw,WALL_T);
+  ctx.strokeStyle='#555'; ctx.lineWidth=2; ctx.strokeRect(WALL_T,0,WELL_W,WELL_H);
 
-  // Draw stones
-  Composite.allBodies(world).forEach(function(b) {
-    if (b.label!=='stone') return;
-    var isActive = b===activeStone;
-    var pp = (b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
-
-    // Fill polygon
-    pp.forEach(function(p) {
-      var v=p.vertices; if (!v||v.length<3) return;
-      ctx.beginPath();
-      ctx.moveTo(v[0].x,v[0].y);
-      for (var i=1;i<v.length;i++) ctx.lineTo(v[i].x,v[i].y);
+  // Blocks
+  Composite.allBodies(world).forEach(function(b){
+    if(b.label!=='block') return;
+    var pp=(b.parts&&b.parts.length>1)?b.parts.slice(1):[b];
+    pp.forEach(function(p){
+      var v=p.vertices; if(!v||v.length<3) return;
+      ctx.beginPath(); ctx.moveTo(v[0].x,v[0].y);
+      for(var i=1;i<v.length;i++) ctx.lineTo(v[i].x,v[i].y);
       ctx.closePath();
-      ctx.fillStyle = b._color||'#888';
-      ctx.fill();
-      ctx.strokeStyle = isActive?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.25)';
-      ctx.lineWidth = isActive?3:1.5;
-      ctx.stroke();
+      ctx.fillStyle=b._color||'#888'; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=1.5; ctx.stroke();
     });
-
-
   });
 
-  if (state==='clearing') {
-    ctx.fillStyle='rgba(255,255,80,0.1)';
-    ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
+  // Bomb
+  if(bomb){
+    var bx=bomb.position.x, by=bomb.position.y;
+    // Aim line (only when static)
+    if(bomb.isStatic){
+      ctx.strokeStyle='rgba(255,80,80,0.35)'; ctx.lineWidth=1;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(bx,by+12); ctx.lineTo(bx,WELL_H); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Bomb body
+    ctx.beginPath(); ctx.arc(bx,by,11,0,Math.PI*2);
+    ctx.fillStyle='#cc2222'; ctx.fill();
+    ctx.strokeStyle='#ff6666'; ctx.lineWidth=2; ctx.stroke();
+    // Fuse
+    ctx.strokeStyle='#ffcc00'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(bx+4,by-10); ctx.quadraticCurveTo(bx+12,by-20,bx+8,by-28); ctx.stroke();
+    // Spark
+    ctx.beginPath(); ctx.arc(bx+8,by-28,3,0,Math.PI*2);
+    ctx.fillStyle='#ffff00'; ctx.fill();
+  }
+
+  // Explosion effects
+  explosionEffects=explosionEffects.filter(function(e){
+    e.r+=5; e.alpha-=0.045;
+    if(e.alpha<=0) return false;
+    ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,200,50,'+e.alpha+')'; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle='rgba(255,120,0,'+(e.alpha*0.25)+')'; ctx.fill();
+    return true;
+  });
+
+  if(state==='clearing'){
+    ctx.fillStyle='rgba(255,255,80,0.08)'; ctx.fillRect(WALL_T,0,WELL_W,WELL_H);
   }
 }
 
-function updateHUD() {
-  document.getElementById('score').textContent = score;
-  document.getElementById('stage-disp').textContent = stage;
-  document.getElementById('thresh-disp').textContent = Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
+function updateHUD(){
+  document.getElementById('score').textContent=score;
+  document.getElementById('stage-disp').textContent=stage;
+  document.getElementById('thresh-disp').textContent=Math.round(THRESHOLDS[Math.min(stage-1,2)]*100)+'%';
+  document.getElementById('cleared-disp').textContent=bandsCleared+'/'+CLEAR_TARGET;
 }
-function showBanner(msg) {
+
+function showBanner(msg){
   var el=document.getElementById('banner');
   el.textContent=msg; el.style.opacity='1';
   setTimeout(function(){el.style.opacity='0';},1800);
 }
-function showOverlay(title,body,btn) {
+function showOverlay(title,body,btn){
   var ov=document.getElementById('overlay');
-  ov.querySelector('h1').textContent=title;
+  ov.querySelector('h1').innerHTML=title;
   ov.querySelector('p').textContent=body;
   ov.querySelector('button').textContent=btn;
   ov.style.display='flex';
 }
 
-function startMove(d){moveStone(d);clearInterval(moveTimer);moveTimer=setInterval(function(){moveStone(d);},100);}
-function stopMove(){clearInterval(moveTimer);}
-function startRot(){rotateStone();clearInterval(rotTimer);rotTimer=setInterval(rotateStone,80);}
-function stopRot(){clearInterval(rotTimer);}
+// Controls
+function startMove(d){ moveBomb(d); clearInterval(moveTimer); moveTimer=setInterval(function(){moveBomb(d);},100); }
+function stopMove(){ clearInterval(moveTimer); }
 
 function bind(id,dn,up){
   var el=document.getElementById(id);
@@ -453,36 +497,33 @@ function bind(id,dn,up){
 }
 bind('btn-left',function(){startMove(-1);},stopMove);
 bind('btn-right',function(){startMove(1);},stopMove);
-bind('btn-rotate',startRot,stopRot);
-bind('btn-drop',dropStone,function(){});
+bind('btn-drop',dropBomb,function(){});
 
 document.addEventListener('keydown',function(e){
-  if(state!=='playing')return;
+  if(state!=='playing') return;
   if(e.key==='ArrowLeft'){e.preventDefault();startMove(-1);}
   if(e.key==='ArrowRight'){e.preventDefault();startMove(1);}
-  if(e.key==='ArrowDown'||e.key===' '){e.preventDefault();dropStone();}
-  if(e.key==='ArrowUp'||e.key==='z'){e.preventDefault();startRot();}
+  if(e.key==='ArrowDown'||e.key===' '){e.preventDefault();dropBomb();}
 });
 document.addEventListener('keyup',function(e){
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight')stopMove();
-  if(e.key==='ArrowUp'||e.key==='z')stopRot();
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight') stopMove();
 });
 
 var txStart=null;
 canvas.addEventListener('touchstart',function(e){txStart=e.touches[0].clientX;},{passive:true});
 canvas.addEventListener('touchmove',function(e){
-  if(txStart===null)return;
+  if(txStart===null) return;
   var dx=e.touches[0].clientX-txStart;
-  if(Math.abs(dx)>14){moveStone(dx>0?1:-1);txStart=e.touches[0].clientX;}
+  if(Math.abs(dx)>14){moveBomb(dx>0?1:-1);txStart=e.touches[0].clientX;}
 },{passive:true});
 canvas.addEventListener('touchend',function(){txStart=null;});
 
 function startGame(){
-  score=0;stage=1;colorIdx=0;state='playing';activeStone=null;
-  if(settleTimer){clearTimeout(settleTimer);settleTimer=null;}
+  score=0; stage=1; colorIdx=0; bandsCleared=0;
+  bomb=null; bombX=WALL_T+WELL_W/2;
+  explosionEffects=[];
   document.getElementById('overlay').style.display='none';
-  updateHUD(); initPhysics();
-  setTimeout(spawnStone,300);
+  updateHUD(); initPhysics(); startBlockRain();
 }
 document.getElementById('start-btn').addEventListener('click',startGame);
 requestAnimationFrame(draw);
