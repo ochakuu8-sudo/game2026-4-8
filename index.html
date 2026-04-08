@@ -198,6 +198,11 @@ function startBlockRain(){
 
 function spawnBomb(){
   if(bomb) return;
+  if(bombsRemain<=0){
+    state='gameover';
+    showOverlay('Game Over','爆弾がなくなりました','再スタート');
+    return;
+  }
   var bombCount=Composite.allBodies(world).filter(function(b){return b.label==='bomb';}).length;
   if(bombCount>=MAX_BOMBS) return;
   bomb=Bodies.circle(bombX,30,11,{
@@ -432,7 +437,7 @@ function sliceBand(y1,y2){
 // DRAW
 function draw(){
   requestAnimationFrame(draw);
-  if(state==='menu') return;
+  if(state==='menu'||state==='gameover') return;
   var cw=canvas.width, ch=canvas.height;
   var offsetX=0, offsetY=0;
   if(screenShake>0){
