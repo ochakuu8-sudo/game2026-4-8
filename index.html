@@ -410,18 +410,7 @@ function draw() {
       ctx.stroke();
     });
 
-    // Draw symbol label on top
-    if (b._label) {
-      ctx.save();
-      ctx.translate(b.position.x, b.position.y);
-      ctx.rotate(b.angle);
-      ctx.font = 'bold 22px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(b._label, 0, 0);
-      ctx.restore();
-    }
+
   });
 
   if (state==='clearing') {
