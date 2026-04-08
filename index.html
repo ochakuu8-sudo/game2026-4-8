@@ -88,11 +88,12 @@ canvas { display: block; }
 var M = Matter;
 var Engine=M.Engine, Runner=M.Runner, Bodies=M.Bodies, Body=M.Body, Composite=M.Composite, Events=M.Events;
 
-var WELL_W=280, WELL_H=480, WALL_T=26, BAND_H=60;
+var WELL_W=280, WELL_H=480, WALL_T=26, BAND_H=30;
 var NUM_BANDS=Math.floor(WELL_H/BAND_H);
 var THRESHOLDS=[0.80,0.70,0.60];
 var CLEAR_TARGET=5;
 var EXPLOSION_R=75;
+var MAX_BOMBS=1;
 
 var COLORS=['#e05252','#e08832','#d4c830','#52c054','#52b0e0','#7060d8','#d060c0','#40c8a0','#ff7f50','#9370db'];
 
@@ -174,6 +175,8 @@ function startBlockRain(){
 
 function spawnBomb(){
   if(bomb) return;
+  var bombCount=Composite.allBodies(world).filter(function(b){return b.label==='bomb';}).length;
+  if(bombCount>=MAX_BOMBS) return;
   bomb=Bodies.circle(bombX,30,11,{
     friction:0.1,restitution:0.1,frictionAir:0.001,density:0.008,
     isStatic:true,label:'bomb',isSensor:false
