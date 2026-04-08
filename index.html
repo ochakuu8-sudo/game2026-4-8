@@ -260,13 +260,8 @@ function triggerExplosion(cx,cy){
     }
   });
   // Delay check
-  state='exploding';
   setTimeout(function(){
     checkClear();
-    if(state==='exploding'){
-      state='playing';
-      setTimeout(spawnBomb,600);
-    }
   },1200);
 }
 
