@@ -170,7 +170,7 @@ function createBlock(x,y,sizeMultiplier){
 
 function startBlockRain(){
   state='raining';
-  var count=0, total=10;
+  var count=0, total=25;
   var iv=setInterval(function(){
     if(count>=total){ clearInterval(iv); setTimeout(function(){ console.log('ブロック落下完了、状態を playing に変更'); if(state==='raining'){state='playing';console.log('爆弾を生成します');spawnBomb();console.log('爆弾生成完了:',bomb);} },2500); return; }
     var x=WALL_T+40+Math.random()*(WELL_W-80);
@@ -367,7 +367,9 @@ function checkClear(){
       bandsCleared++;
       score+=1000*stage;
       updateHUD();
-      setTimeout(function(){if(state!=='win'){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,1));}},400);
+      for(var j=0;j<3;j++){
+        setTimeout(function(){if(state!=='win'){var x=WALL_T+40+Math.random()*(WELL_W-80);Composite.add(world,createBlock(x,-60,1));}},400+j*100);
+      }
     }
   }
   if(cleared){
